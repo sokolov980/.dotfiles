@@ -1,0 +1,118 @@
+pages:
+  - name: Home
+    columns:
+      # Left Column - Small Size
+      - size: small
+        widgets:
+          - type: calendar
+          - type: rss
+            title: RSS FEED
+            limit: 5
+            collapse-after: 3
+            feeds:
+              - url: https://blog.samaltman.com/posts.atom
+              - url: httpsive.rs/podcast.rss
+          # Repo Widgets as two separate groups
+          - type: group
+            title: Guides
+            widgets:
+              - type: custom-api
+                title: Repository
+                url: https://api.github.com/repos/sokolov980/guides
+                cache: 5m
+                headers:
+                  User-Agent: Glance-Dashboard
+                template: |
+                  <p><strong>Repo:</strong> sokolov980/guides</p>
+                  <p><strong>Stars:</strong> {{ .JSON.Int "stargazers_count" }}</p>
+                  <p><strong>Forks:</strong> {{ .JSON.Int "forks_count" }}</p>
+              - type: custom-api
+                title: Commits
+                url: https://api.github.com/repos/sokolov980/guides/commits?per_page=3
+                cache: 5m
+                headers:
+                  User-Agent: Glance-Dashboard
+                template: |
+                  <ul> {{ range .JSON.Array "" }} <li> <a href="{{ .String "html_url" }}" target="_blank" style="color:var(--text-color);"> {{ .String "commit.message" }} </a> </li> {{ end }} </ul>
+          - type: group
+            title: Dotfiles
+            widgets:
+              - type: custom-api
+                title: Repository
+                url: https://api.github.com/repos/sokolov980/.dotfiles
+                cache: 5m
+                headers:
+                  User-Agent: Glance-Dashboard
+                template: |
+                  <p><strong>Repo:</strong> sokolov980/.dotfiles</p>
+                  <p><strong>Stars:</strong> {{ .JSON.Int "stargazers_count" }}</p>
+                  <p><strong>Forks:</strong> {{ .JSON.Int "forks_count" }}</p>
+              - type: custom-api
+                title: Commits
+                url: https://api.github.com/repos/sokolov980/.dotfiles/commits?per_page=3
+                cache: 5m
+                headers:
+                  User-Agent: Glance-Dashboard
+                template: |
+                  <ul> {{ range .JSON.Array "" }} <li> <a href="{{ .String "html_url" }}" target="_blank" style="color:var(--text-color);"> {{ .String "commit.message" }} </a> </li> {{ end }} </ul>
+
+      # Center Column - Full Size
+      - size: full
+        widgets:
+          - type: group
+            title: Market Data
+            widgets:
+              - type: markets
+                markets:
+                  - symbol: GOOGL
+                    name: Google
+                  - symbol: AAPL
+                    name: Apple
+                  - symbol: AMZN
+                    name: Amazon
+                  - symbol: MSFT
+                    name: Microsoft
+          - type: videos
+            layout: vertical-list
+            channels:
+              - UCBJycsmduvYEL83R_U4JriQ
+              - UCXuqSBlHAE6Xw-yeJA0Tunw
+              - UCKtiMrNZq0gGbPTnsMu7Bsw
+              - UCoOae5nYA7VqaXzerajD0lg
+          - type: group
+            layout: vertical-list
+            widgets:
+              - type: reddit
+                subreddit: worldnews
+              - type: reddit
+                subreddit: obsidianmd
+      # Right Column - Small Size
+      - size: small
+        widgets:
+          - type: weather
+            location: London, UK
+            units: imperial
+            hour-format: 12h
+          - type: clock
+            hour-format: 24h
+            timezones:
+              - timezone: Europe/Moscow
+                label: Moscow
+              - timezone: Asia/Tehran
+                label: Tehran
+              - timezone: Asia/Kolkata
+                label: New Delhi
+              - timezone: Asia/Shanghai
+                label: Beijing
+              - timezone: Asia/Seoul
+                label: Seoul
+          - type: bookmarks
+            groups:
+              - links:
+                  - title: Hacker News
+                    url: https://news.ycombinator.com/
+                  - title: Ttsu Reader
+                    url: https://reader.ttsu.app/manage
+                  - title: private-llm
+                    url: http://localhost:8080
+          - type: to-do
