@@ -46,3 +46,39 @@ preview_changes() {
     --exclude=".DS_Store" \
     "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"
 }
+
+# Command Handling & Logging
+
+LOG_FILE="$HOME/.dotfiles_sync.log"
+
+log() {
+  local message="$1"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" | tee -a "$LOG_FILE"
+}
+
+show_usage() {
+  echo "Usage: $0 [push|pull|preview|help]"
+  echo "  push     - Upload local dotfiles to remote"
+  echo "  pull     - Download dotfiles from remote"
+  echo "  preview  - Show what will change before syncing"
+  echo "  help     - Show this help message"
+}
+
+case "$1" in
+  push)
+    log "Pushing dotfiles to remote..."
+    push_dotfiles
+    log "Push complete."
+    ;;
+  pull)
+    log "Pulling dotfiles from remote..."
+    pull_dotfiles
+    log "Pull complete."
+    ;;
+  preview)
+    preview_changes
+    ;;
+  help|*)
+    show_usage
+    ;;
+esac
