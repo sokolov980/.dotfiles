@@ -129,3 +129,18 @@ confirm() {
 
 confirm "This will overwrite remote files with local copies. Continue?"
 
+CONFIG_FILE="$HOME/.syncfiles.conf"
+
+load_config() {
+  if [ -f "$CONFIG_FILE" ]; then
+    echo "Loading config from $CONFIG_FILE"
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+  fi
+}
+
+REMOTE_HOST="my-mac.local"
+REMOTE_USER="abhiram"
+REMOTE_PATH="/Users/abhiram/dotfiles-sync"
+
+
