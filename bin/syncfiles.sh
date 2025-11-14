@@ -143,4 +143,9 @@ REMOTE_HOST="my-mac.local"
 REMOTE_USER="abhiram"
 REMOTE_PATH="/Users/abhiram/dotfiles-sync"
 
+status() {
+  echo "→ Checking status..."
+  rsync -avhn --delete "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" \
+    | grep -E 'deleting|[^/]$' || echo "No differences."
+}
 
