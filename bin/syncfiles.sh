@@ -82,3 +82,50 @@ case "$1" in
     show_usage
     ;;
 esac
+
+LOCAL_DIR="$LOCAL_PATH"
+REMOTE_DIR="$REMOTE_PATH"
+
+ensure_dirs() {
+  echo "Checking sync directories..."
+
+  if [ ! -d "$LOCAL_DIR" ]; then
+    echo "Local directory missing, creating $LOCAL_DIR"
+    mkdir -p "$LOCAL_DIR"
+  fi
+
+  ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
+}
+
+check_ssh() {
+  echo "Testing SSH connection to $REMOTE_HOST..."
+  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE_USER@$REMOTE_HOST" true 2>/dev/null; then
+    echo "Error: Cannot connect to $REMOTE_HOST via SSH"
+    exit 1
+  fi
+}
+
+RSYNC_FLAGS="-avh --progress --exclude=.git/ --exclude=node_modules/ --exclude=.DS_Store"
+RSYNC_FLAGS_DELETE="$RSYNC_FLAGS --delete"
+rsync $RSYNC_FLAGS_DELETE ...
+
+diff_changes() {
+  echo "→ Listing changed files (dry run)..."
+  rsync -avhn --delete \
+    --exclude=".git/" \
+    --exclude="node_modules/" \
+    --exclude=".DS_Store" \
+    "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" | sed '1,3d'
+}
+
+confirm() {
+  local prompt="$1"
+  read -rp "$prompt [y/N]: " ans
+  if [[ "$ans" != "y" && "$ans" != "Y" ]]; then
+    echo "Aborted."
+    exit 1
+  fi
+}
+
+confirm "This will overwrite remote files with local copies. Continue?"
+
