@@ -1,5 +1,5 @@
 #!/bin/bash
-# syncfiles — Minimal and fast dotfile sync tool for macOS/Linux/WSL
+# syncfiles — High-performance dotfile sync tool for macOS/Linux/WSL
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -39,14 +39,15 @@ ensure_dirs() {
   ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
 }
 
-# Rsync flags with compression, partials, and progress
-RSYNC_BASE="-azh --progress --partial --exclude=.git/ --exclude=node_modules/ --exclude=.DS_Store $EXCLUDES"
+# Rsync flags optimized for large sets
+RSYNC_BASE="-azh --partial --inplace --info=progress2 --exclude=.git/ --exclude=node_modules/ --exclude=.DS_Store $EXCLUDES"
 RSYNC_FLAGS="$RSYNC_BASE"
 RSYNC_FLAGS_DELETE="$RSYNC_BASE --delete"
 RSYNC_SSH_OPTS="-e 'ssh -C -o ControlMaster=auto -o ControlPersist=10m'"
 
 confirm() { read -rp "$1 [y/N]: " ans; [[ "$ans" != "y" && "$ans" != "Y" ]] && { echo "Aborted."; exit 1; }; }
 
+# Backup local files
 backup_local() {
   backup_dir="$LOCAL_DIR-backup-$(date '+%Y%m%d%H%M%S')"
   log "Backing up local files to $backup_dir"
