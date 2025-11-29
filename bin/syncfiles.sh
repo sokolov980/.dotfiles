@@ -2,7 +2,7 @@
 # syncfiles — Cross-platform dotfile sync tool with multi-remote, versioned backups, hooks, selective sync, and verbose mode
 #
 # Usage:
-#   ./syncfiles [command] [options]
+#   syncfiles [command] [options]
 #
 # Commands:
 #   push       Upload local dotfiles to remote(s)
@@ -16,7 +16,7 @@
 #   -v                 Enable verbose/debug mode
 #   SYNCFILES_VERBOSE   Set to "true" in env or config to enable verbose mode
 #   ENCRYPT_BACKUP      Set to "true" to encrypt local backups using gpg
-#   REMOTE_HOSTS        Space-separated list of remote hosts (e.g., "laptop.local server.example.com")
+#   REMOTE_HOSTS        Space-separated list of remote hosts
 #   REMOTE_USER         SSH user for remote hosts
 #   REMOTE_PATH         Remote sync directory (default: $HOME/dotfiles-sync)
 #   LOCAL_PATH          Local sync directory (default: $HOME/.dotfiles)
@@ -24,15 +24,29 @@
 #   POST_SYNC_HOOK      Shell command(s) to run after sync
 #   .syncfiles_exclude  File listing patterns to exclude from sync
 #   .syncfiles_include  Optional file listing specific files/folders to include
-#
-# Example:
-#   SYNCFILES_VERBOSE=true ./syncfiles sync
-#   ./syncfiles push -v
 
 set -euo pipefail
 IFS=$'\n\t'
 
+# ------------------------
+# Ensure script is executable from anywhere
+# ------------------------
+BIN_DIR="$HOME/bin"
+SCRIPT_NAME="syncfiles"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+if ! command -v $SCRIPT_NAME >/dev/null 2>&1; then
+  mkdir -p "$BIN_DIR"
+  if [ ! -f "$BIN_DIR/$SCRIPT_NAME" ]; then
+    ln -s "$SCRIPT_PATH" "$BIN_DIR/$SCRIPT_NAME"
+    echo "Created symlink $BIN_DIR/$SCRIPT_NAME -> $SCRIPT_PATH"
+    echo "Make sure $BIN_DIR is in your PATH (add 'export PATH=\"$BIN_DIR:\$PATH\"' to your shell config)"
+  fi
+fi
+
+# ------------------------
 # OS detection
+# ------------------------
 OS_TYPE="$(uname -s)"
 IS_WSL=false
 IS_WINDOWS=false
@@ -67,6 +81,7 @@ REMOTE_DIR="$REMOTE_PATH"
 EXCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_exclude")"
 EXCLUDES=""
 [ -f "$EXCLUDE_FILE" ] && while IFS= read -r line; do EXCLUDES="$EXCLUDES --exclude=$line"; done < "$EXCLUDE_FILE"
+
 INCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_include")"
 INCLUDES=""
 [ -f "$INCLUDE_FILE" ] && while IFS= read -r line; do INCLUDES="$INCLUDES $line"; done < "$INCLUDE_FILE"
