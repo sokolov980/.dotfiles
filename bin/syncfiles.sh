@@ -1,22 +1,51 @@
 #!/bin/bash
-# syncfiles — High-performance dotfile sync tool for macOS/Linux/WSL
+# syncfiles — Cross-platform high-performance dotfile sync tool
 
 set -euo pipefail
 IFS=$'\n\t'
 
-CONFIG_FILE="$HOME/.syncfiles.conf"
+# Detect OS
+OS_TYPE="$(uname -s)"
+IS_WSL=false
+IS_WINDOWS=false
+
+case "$OS_TYPE" in
+  Linux)
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+      IS_WSL=true
+    fi
+    ;;
+  Darwin)
+    ;; # macOS
+  MINGW*|MSYS*|CYGWIN*)
+    IS_WINDOWS=true
+    ;;
+esac
+
+# Convert Windows paths to Unix style for rsync
+to_unix_path() {
+  local path="$1"
+  if [ "$IS_WINDOWS" = true ]; then
+    path="$(echo "$path" | sed -E 's|([A-Za-z]):|/\L\1|')"
+    path="${path//\\//}"
+  fi
+  echo "$path"
+}
+
+# Config
+CONFIG_FILE="$(to_unix_path "$HOME")/.syncfiles.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
 REMOTE_HOST="${REMOTE_HOST:-macbook.local}"
 REMOTE_USER="${REMOTE_USER:-$USER}"
-REMOTE_PATH="${REMOTE_PATH:-/Users/$REMOTE_USER/dotfiles-sync}"
-LOCAL_PATH="${LOCAL_PATH:-$HOME/.dotfiles}"
-LOG_FILE="$HOME/.dotfiles_sync.log"
+REMOTE_PATH="$(to_unix_path "${REMOTE_PATH:-$HOME/dotfiles-sync}")"
+LOCAL_PATH="$(to_unix_path "${LOCAL_PATH:-$HOME/.dotfiles}")"
+LOG_FILE="$(to_unix_path "$HOME/.dotfiles_sync.log")"
 
 LOCAL_DIR="$LOCAL_PATH"
 REMOTE_DIR="$REMOTE_PATH"
 
-EXCLUDE_FILE="$HOME/.syncfiles_exclude"
+EXCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_exclude")"
 EXCLUDES=""
 [ -f "$EXCLUDE_FILE" ] && while IFS= read -r line; do EXCLUDES="$EXCLUDES --exclude=$line"; done < "$EXCLUDE_FILE"
 
@@ -39,7 +68,7 @@ ensure_dirs() {
   ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
 }
 
-# Rsync flags optimized for large sets
+# Rsync flags
 RSYNC_BASE="-azh --partial --inplace --info=progress2 --exclude=.git/ --exclude=node_modules/ --exclude=.DS_Store $EXCLUDES"
 RSYNC_FLAGS="$RSYNC_BASE"
 RSYNC_FLAGS_DELETE="$RSYNC_BASE --delete"
@@ -55,36 +84,14 @@ backup_local() {
   rsync -a --exclude=".git/" "$LOCAL_DIR/" "$backup_dir/"
 }
 
-push_dotfiles() {
-  log "Pushing dotfiles to $REMOTE_HOST..."
-  rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"
-  log "Push complete."
-}
+# Operations
+push_dotfiles() { log "Pushing dotfiles to $REMOTE_HOST..."; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; log "Push complete."; }
+pull_dotfiles() { log "Pulling dotfiles from $REMOTE_HOST..."; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"; log "Pull complete."; }
+sync_dotfiles() { log "Synchronizing local and remote dotfiles..."; backup_local; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"; log "Sync complete."; }
+preview_changes() { log "Previewing changes (dry run)..."; rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; }
+diff_changes() { log "Listing changed files (dry run)..."; rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" | sed '1,3d'; }
 
-pull_dotfiles() {
-  log "Pulling dotfiles from $REMOTE_HOST..."
-  rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"
-  log "Pull complete."
-}
-
-sync_dotfiles() {
-  log "Synchronizing local and remote dotfiles..."
-  backup_local
-  rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"
-  rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"
-  log "Sync complete."
-}
-
-preview_changes() {
-  log "Previewing changes (dry run)..."
-  rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"
-}
-
-diff_changes() {
-  log "Listing changed files (dry run)..."
-  rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" | sed '1,3d'
-}
-
+# Usage
 show_usage() {
   echo "Usage: $0 [push|pull|sync|preview|diff|help]"
   echo "  push     - Upload local dotfiles to remote"
@@ -102,25 +109,10 @@ check_ssh
 ensure_dirs
 
 case "$command" in
-  push)
-    confirm "Overwrite remote files with local copies? Continue?"
-    push_dotfiles
-    ;;
-  pull)
-    confirm "Overwrite local files with remote copies? Continue?"
-    pull_dotfiles
-    ;;
-  sync)
-    confirm "Merge changes and create backups for conflicts? Continue?"
-    sync_dotfiles
-    ;;
-  preview)
-    preview_changes
-    ;;
-  diff)
-    diff_changes
-    ;;
-  help|*)
-    show_usage
-    ;;
+  push) confirm "Overwrite remote files with local copies? Continue?"; push_dotfiles ;;
+  pull) confirm "Overwrite local files with remote copies? Continue?"; pull_dotfiles ;;
+  sync) confirm "Merge changes and create backups for conflicts? Continue?"; sync_dotfiles ;;
+  preview) preview_changes ;;
+  diff) diff_changes ;;
+  help|*) show_usage ;;
 esac
