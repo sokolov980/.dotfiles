@@ -1,5 +1,5 @@
 #!/bin/bash
-# syncfiles — Cross-platform high-performance dotfile sync tool with automatic WSL path handling
+# syncfiles — Cross-platform high-performance dotfile sync tool with WSL support and verbose mode
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -19,18 +19,17 @@ case "$OS_TYPE" in
   MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=true ;;
 esac
 
-# Convert Windows path to Unix style for rsync
+# Convert Windows path to Unix style
 to_unix_path() {
   local path="$1"
   if [ "$IS_WINDOWS" = true ] || [ "$IS_WSL" = true ]; then
-    # Convert C:\Users\User\... -> /c/Users/User/...
     path="$(echo "$path" | sed -E 's|([A-Za-z]):|/\L\1|')"
     path="${path//\\//}"
   fi
   echo "$path"
 }
 
-# Load config and convert paths
+# Load config
 CONFIG_FILE="$(to_unix_path "$HOME")/.syncfiles.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
@@ -46,6 +45,14 @@ REMOTE_DIR="$REMOTE_PATH"
 EXCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_exclude")"
 EXCLUDES=""
 [ -f "$EXCLUDE_FILE" ] && while IFS= read -r line; do EXCLUDES="$EXCLUDES --exclude=$line"; done < "$EXCLUDE_FILE"
+
+# Verbose mode
+VERBOSE=false
+if [[ "${SYNCFILES_VERBOSE:-false}" == "true" ]] || [[ "${1:-}" == "-v" ]]; then
+  VERBOSE=true
+  log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+  log "Verbose mode enabled."
+fi
 
 # Logging
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
@@ -72,6 +79,12 @@ RSYNC_FLAGS="$RSYNC_BASE"
 RSYNC_FLAGS_DELETE="$RSYNC_BASE --delete"
 RSYNC_SSH_OPTS="-e 'ssh -C -o ControlMaster=auto -o ControlPersist=10m'"
 
+# Add verbose if enabled
+if [ "$VERBOSE" = true ]; then
+  RSYNC_FLAGS="$RSYNC_FLAGS -vv"
+  RSYNC_FLAGS_DELETE="$RSYNC_FLAGS_DELETE -vv"
+fi
+
 confirm() { read -rp "$1 [y/N]: " ans; [[ "$ans" != "y" && "$ans" != "Y" ]] && { echo "Aborted."; exit 1; }; }
 
 # Backup local files
@@ -91,17 +104,19 @@ diff_changes() { log "Listing changed files (dry run)..."; rsync -avhn --delete 
 
 # Usage
 show_usage() {
-  echo "Usage: $0 [push|pull|sync|preview|diff|help]"
+  echo "Usage: $0 [push|pull|sync|preview|diff|help] [-v]"
   echo "  push     - Upload local dotfiles to remote"
   echo "  pull     - Download dotfiles from remote"
   echo "  sync     - Merge changes with conflict backups"
   echo "  preview  - Show rsync preview including deletions"
   echo "  diff     - Clean diff of changed files"
   echo "  help     - Show this help message"
+  echo "  -v       - Enable verbose/debug output"
 }
 
 [ "$#" -eq 0 ] && { show_usage; exit 1; }
 command="$1"
+[ "$command" == "-v" ] && command="$2"
 
 check_ssh
 ensure_dirs
