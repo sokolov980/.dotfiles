@@ -1,10 +1,10 @@
 #!/bin/bash
-# syncfiles — Cross-platform high-performance dotfile sync tool
+# syncfiles — Cross-platform high-performance dotfile sync tool with automatic WSL path handling
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Detect OS
+# Detect OS and WSL
 OS_TYPE="$(uname -s)"
 IS_WSL=false
 IS_WINDOWS=false
@@ -15,24 +15,22 @@ case "$OS_TYPE" in
       IS_WSL=true
     fi
     ;;
-  Darwin)
-    ;; # macOS
-  MINGW*|MSYS*|CYGWIN*)
-    IS_WINDOWS=true
-    ;;
+  Darwin) ;; # macOS
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=true ;;
 esac
 
-# Convert Windows paths to Unix style for rsync
+# Convert Windows path to Unix style for rsync
 to_unix_path() {
   local path="$1"
-  if [ "$IS_WINDOWS" = true ]; then
+  if [ "$IS_WINDOWS" = true ] || [ "$IS_WSL" = true ]; then
+    # Convert C:\Users\User\... -> /c/Users/User/...
     path="$(echo "$path" | sed -E 's|([A-Za-z]):|/\L\1|')"
     path="${path//\\//}"
   fi
   echo "$path"
 }
 
-# Config
+# Load config and convert paths
 CONFIG_FILE="$(to_unix_path "$HOME")/.syncfiles.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
