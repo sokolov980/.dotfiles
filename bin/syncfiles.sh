@@ -1,25 +1,47 @@
 #!/bin/bash
-# syncfiles — Cross-platform high-performance dotfile sync tool with WSL support and verbose mode
+# syncfiles — Cross-platform dotfile sync tool with multi-remote, versioned backups, hooks, selective sync, and verbose mode
+#
+# Usage:
+#   ./syncfiles [command] [options]
+#
+# Commands:
+#   push       Upload local dotfiles to remote(s)
+#   pull       Download dotfiles from remote(s)
+#   sync       Merge changes with conflict backups
+#   preview    Show rsync preview including deletions
+#   diff       Show a clean diff of changed files
+#   help       Display this usage information
+#
+# Options:
+#   -v                 Enable verbose/debug mode
+#   SYNCFILES_VERBOSE   Set to "true" in env or config to enable verbose mode
+#   ENCRYPT_BACKUP      Set to "true" to encrypt local backups using gpg
+#   REMOTE_HOSTS        Space-separated list of remote hosts (e.g., "laptop.local server.example.com")
+#   REMOTE_USER         SSH user for remote hosts
+#   REMOTE_PATH         Remote sync directory (default: $HOME/dotfiles-sync)
+#   LOCAL_PATH          Local sync directory (default: $HOME/.dotfiles)
+#   PRE_SYNC_HOOK       Shell command(s) to run before sync
+#   POST_SYNC_HOOK      Shell command(s) to run after sync
+#   .syncfiles_exclude  File listing patterns to exclude from sync
+#   .syncfiles_include  Optional file listing specific files/folders to include
+#
+# Example:
+#   SYNCFILES_VERBOSE=true ./syncfiles sync
+#   ./syncfiles push -v
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Detect OS and WSL
+# OS detection
 OS_TYPE="$(uname -s)"
 IS_WSL=false
 IS_WINDOWS=false
-
 case "$OS_TYPE" in
-  Linux)
-    if grep -qi microsoft /proc/version 2>/dev/null; then
-      IS_WSL=true
-    fi
-    ;;
-  Darwin) ;; # macOS
+  Linux) grep -qi microsoft /proc/version 2>/dev/null && IS_WSL=true ;;
+  Darwin) ;;
   MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=true ;;
 esac
 
-# Convert Windows path to Unix style
 to_unix_path() {
   local path="$1"
   if [ "$IS_WINDOWS" = true ] || [ "$IS_WSL" = true ]; then
@@ -29,15 +51,15 @@ to_unix_path() {
   echo "$path"
 }
 
-# Load config
 CONFIG_FILE="$(to_unix_path "$HOME")/.syncfiles.conf"
 [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
 
-REMOTE_HOST="${REMOTE_HOST:-macbook.local}"
+REMOTE_HOSTS=(${REMOTE_HOSTS:-"macbook.local"})
 REMOTE_USER="${REMOTE_USER:-$USER}"
 REMOTE_PATH="$(to_unix_path "${REMOTE_PATH:-$HOME/dotfiles-sync}")"
 LOCAL_PATH="$(to_unix_path "${LOCAL_PATH:-$HOME/.dotfiles}")"
-LOG_FILE="$(to_unix_path "$HOME/.dotfiles_sync.log")"
+LOG_DIR="$(to_unix_path "$HOME/.dotfiles_sync_logs")"
+mkdir -p "$LOG_DIR"
 
 LOCAL_DIR="$LOCAL_PATH"
 REMOTE_DIR="$REMOTE_PATH"
@@ -45,74 +67,61 @@ REMOTE_DIR="$REMOTE_PATH"
 EXCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_exclude")"
 EXCLUDES=""
 [ -f "$EXCLUDE_FILE" ] && while IFS= read -r line; do EXCLUDES="$EXCLUDES --exclude=$line"; done < "$EXCLUDE_FILE"
+INCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_include")"
+INCLUDES=""
+[ -f "$INCLUDE_FILE" ] && while IFS= read -r line; do INCLUDES="$INCLUDES $line"; done < "$INCLUDE_FILE"
 
-# Verbose mode
 VERBOSE=false
 if [[ "${SYNCFILES_VERBOSE:-false}" == "true" ]] || [[ "${1:-}" == "-v" ]]; then
   VERBOSE=true
   log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
   log "Verbose mode enabled."
+else
+  log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_DIR/syncfiles.log"; }
 fi
 
-# Logging
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
+pre_hook() { [ -n "${PRE_SYNC_HOOK:-}" ] && eval "$PRE_SYNC_HOOK"; }
+post_hook() { [ -n "${POST_SYNC_HOOK:-}" ] && eval "$POST_SYNC_HOOK"; }
 
-# SSH check
 check_ssh() {
-  if [ ! -f "$HOME/.ssh/id_rsa" ] && [ ! -f "$HOME/.ssh/id_ed25519" ]; then
-    echo "No SSH keys found. Generate one with ssh-keygen."
-    exit 1
-  fi
-  log "Testing SSH connection to $REMOTE_HOST..."
-  ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE_USER@$REMOTE_HOST" true 2>/dev/null || { echo "Cannot connect to $REMOTE_HOST via SSH."; exit 1; }
+  [ ! -f "$HOME/.ssh/id_rsa" ] && [ ! -f "$HOME/.ssh/id_ed25519" ] && { echo "No SSH keys found."; exit 1; }
+  for host in "${REMOTE_HOSTS[@]}"; do
+    log "Testing SSH to $host..."
+    ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE_USER@$host" true 2>/dev/null || { echo "Cannot connect to $host"; exit 1; }
+  done
 }
 
-# Ensure directories exist
 ensure_dirs() {
   [ ! -d "$LOCAL_DIR" ] && mkdir -p "$LOCAL_DIR"
-  ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
+  for host in "${REMOTE_HOSTS[@]}"; do
+    ssh "$REMOTE_USER@$host" "mkdir -p '$REMOTE_DIR'"
+  done
 }
 
-# Rsync flags
 RSYNC_BASE="-azh --partial --inplace --info=progress2 --exclude=.git/ --exclude=node_modules/ --exclude=.DS_Store $EXCLUDES"
 RSYNC_FLAGS="$RSYNC_BASE"
 RSYNC_FLAGS_DELETE="$RSYNC_BASE --delete"
 RSYNC_SSH_OPTS="-e 'ssh -C -o ControlMaster=auto -o ControlPersist=10m'"
-
-# Add verbose if enabled
-if [ "$VERBOSE" = true ]; then
-  RSYNC_FLAGS="$RSYNC_FLAGS -vv"
-  RSYNC_FLAGS_DELETE="$RSYNC_FLAGS_DELETE -vv"
-fi
+[ "$VERBOSE" = true ] && RSYNC_FLAGS="$RSYNC_FLAGS -vv" && RSYNC_FLAGS_DELETE="$RSYNC_FLAGS_DELETE -vv"
 
 confirm() { read -rp "$1 [y/N]: " ans; [[ "$ans" != "y" && "$ans" != "Y" ]] && { echo "Aborted."; exit 1; }; }
 
-# Backup local files
 backup_local() {
-  backup_dir="$LOCAL_DIR-backup-$(date '+%Y%m%d%H%M%S')"
+  timestamp="$(date '+%Y%m%d%H%M%S')"
+  backup_dir="$LOCAL_DIR-backup-$timestamp"
   log "Backing up local files to $backup_dir"
   mkdir -p "$backup_dir"
   rsync -a --exclude=".git/" "$LOCAL_DIR/" "$backup_dir/"
+  [ "${ENCRYPT_BACKUP:-false}" == "true" ] && tar czf - "$backup_dir" | gpg -c -o "$backup_dir.tar.gz.gpg" && rm -rf "$backup_dir"
 }
 
-# Operations
-push_dotfiles() { log "Pushing dotfiles to $REMOTE_HOST..."; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; log "Push complete."; }
-pull_dotfiles() { log "Pulling dotfiles from $REMOTE_HOST..."; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"; log "Pull complete."; }
-sync_dotfiles() { log "Synchronizing local and remote dotfiles..."; backup_local; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" "$LOCAL_DIR/"; log "Sync complete."; }
-preview_changes() { log "Previewing changes (dry run)..."; rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"; }
-diff_changes() { log "Listing changed files (dry run)..."; rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/" | sed '1,3d'; }
+push_dotfiles() { pre_hook; for host in "${REMOTE_HOSTS[@]}"; do log "Pushing to $host"; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; done; post_hook; log "Push complete."; }
+pull_dotfiles() { pre_hook; for host in "${REMOTE_HOSTS[@]}"; do log "Pulling from $host"; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"; done; post_hook; log "Pull complete."; }
+sync_dotfiles() { pre_hook; backup_local; for host in "${REMOTE_HOSTS[@]}"; do rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"; done; post_hook; log "Sync complete."; }
+preview_changes() { for host in "${REMOTE_HOSTS[@]}"; do rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; done; }
+diff_changes() { for host in "${REMOTE_HOSTS[@]}"; do rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/" | sed '1,3d'; done; }
 
-# Usage
-show_usage() {
-  echo "Usage: $0 [push|pull|sync|preview|diff|help] [-v]"
-  echo "  push     - Upload local dotfiles to remote"
-  echo "  pull     - Download dotfiles from remote"
-  echo "  sync     - Merge changes with conflict backups"
-  echo "  preview  - Show rsync preview including deletions"
-  echo "  diff     - Clean diff of changed files"
-  echo "  help     - Show this help message"
-  echo "  -v       - Enable verbose/debug output"
-}
+show_usage() { echo "Usage: $0 [push|pull|sync|preview|diff|help] [-v]"; }
 
 [ "$#" -eq 0 ] && { show_usage; exit 1; }
 command="$1"
