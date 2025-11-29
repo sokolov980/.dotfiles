@@ -1,13 +1,13 @@
 #!/bin/bash
-# syncfiles — Cross-platform dotfile sync tool with multi-remote, versioned backups, hooks, selective sync, and verbose mode
+# syncfiles — Cross-platform dotfile sync tool with multi-remote, versioned backups, hooks, selective sync, verbose mode, and conflict summary
 
 set -euo pipefail
 IFS=$'\n\t'
 
+# Make executable from anywhere via ~/bin symlink
 BIN_DIR="$HOME/bin"
 SCRIPT_NAME="syncfiles"
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-
 if ! command -v $SCRIPT_NAME >/dev/null 2>&1; then
   mkdir -p "$BIN_DIR"
   [ ! -f "$BIN_DIR/$SCRIPT_NAME" ] && ln -s "$SCRIPT_PATH" "$BIN_DIR/$SCRIPT_NAME"
@@ -16,6 +16,7 @@ if ! command -v $SCRIPT_NAME >/dev/null 2>&1; then
   fi
 fi
 
+# OS detection
 OS_TYPE="$(uname -s)"
 IS_WSL=false
 IS_WINDOWS=false
@@ -50,6 +51,7 @@ REMOTE_DIR="$REMOTE_PATH"
 EXCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_exclude")"
 EXCLUDES=""
 [ -f "$EXCLUDE_FILE" ] && while IFS= read -r line; do EXCLUDES="$EXCLUDES --exclude=$line"; done < "$EXCLUDE_FILE"
+
 INCLUDE_FILE="$(to_unix_path "$HOME/.syncfiles_include")"
 INCLUDES=""
 [ -f "$INCLUDE_FILE" ] && while IFS= read -r line; do INCLUDES="$INCLUDES $line"; done < "$INCLUDE_FILE"
@@ -98,11 +100,61 @@ backup_local() {
   [ "${ENCRYPT_BACKUP:-false}" == "true" ] && tar czf - "$backup_dir" | gpg -c -o "$backup_dir.tar.gz.gpg" && rm -rf "$backup_dir"
 }
 
-push_dotfiles() { pre_hook; for host in "${REMOTE_HOSTS[@]}"; do log "Pushing to $host"; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; done; post_hook; log "Push complete."; }
-pull_dotfiles() { pre_hook; for host in "${REMOTE_HOSTS[@]}"; do log "Pulling from $host"; rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"; done; post_hook; log "Pull complete."; }
-sync_dotfiles() { pre_hook; backup_local; for host in "${REMOTE_HOSTS[@]}"; do rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"; done; post_hook; log "Sync complete."; }
-preview_changes() { for host in "${REMOTE_HOSTS[@]}"; do rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"; done; }
-diff_changes() { for host in "${REMOTE_HOSTS[@]}"; do rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/" | sed '1,3d'; done; }
+push_dotfiles() {
+  pre_hook
+  for host in "${REMOTE_HOSTS[@]}"; do
+    log "Pushing to $host"
+    rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"
+  done
+  post_hook
+  log "Push complete."
+}
+
+pull_dotfiles() {
+  pre_hook
+  for host in "${REMOTE_HOSTS[@]}"; do
+    log "Pulling from $host"
+    rsync $RSYNC_FLAGS_DELETE $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"
+  done
+  post_hook
+  log "Pull complete."
+}
+
+sync_dotfiles() {
+  pre_hook
+  backup_local
+  conflict_files=()
+  for host in "${REMOTE_HOSTS[@]}"; do
+    rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"
+    rsync -avh --update --backup --suffix='.conflict' $RSYNC_FLAGS $RSYNC_SSH_OPTS "$REMOTE_USER@$host:$REMOTE_DIR/" "$LOCAL_DIR/"
+    while IFS= read -r file; do conflict_files+=("$file"); done < <(find "$LOCAL_DIR" -type f -name "*.conflict")
+  done
+  post_hook
+  log "Sync complete."
+
+  if [ "${#conflict_files[@]}" -gt 0 ]; then
+    echo
+    echo -e "\033[1;33mMulti-remote conflict summary:\033[0m"
+    for f in "${conflict_files[@]}"; do
+      echo -e "  \033[1;31m$f\033[0m"
+    done
+  else
+    echo
+    echo -e "\033[1;32mNo conflicts detected.\033[0m"
+  fi
+}
+
+preview_changes() {
+  for host in "${REMOTE_HOSTS[@]}"; do
+    rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/"
+  done
+}
+
+diff_changes() {
+  for host in "${REMOTE_HOSTS[@]}"; do
+    rsync -avhn --delete $RSYNC_FLAGS $RSYNC_SSH_OPTS "$LOCAL_DIR/" "$REMOTE_USER@$host:$REMOTE_DIR/" | sed '1,3d'
+  done
+}
 
 show_usage() {
   echo "Usage: syncfiles [push|pull|sync|preview|diff|help] [-v]"
