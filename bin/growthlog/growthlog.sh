@@ -20,6 +20,55 @@ add_habit() {
     echo "Enter a brief description (optional):"
     read DESCRIPTION
 
+# Function to log a completed habit for today
+log_habit() {
+    DATE=$(date +'%Y-%m-%d')
+    echo "Which habit did you complete today?"
+    cat "$HABITS_FILE" | while IFS="|" read NAME DESC; do
+        echo "- $NAME"
+    done
+    echo "Enter the habit you completed today (exact match):"
+    read COMPLETED_HABIT
+    echo "Any notes for today? (Optional)"
+    read NOTES
+
+    LOG_FILE="$LOG_DIR/$DATE.txt"
+
+    # Log the habit for today
+    echo "$DATE: Habit Completed: $COMPLETED_HABIT | Notes: $NOTES" >> "$LOG_FILE"
+    echo "Habit logged for $DATE."
+}
+
+# Function to add or update a goal
+add_goal() {
+    echo "Enter your long-term goal (e.g., Learn a new language, Run a marathon):"
+    read GOAL
+    echo "Optional: When do you want to review this goal? (YYYY-MM-DD, leave blank for no review)"
+    read REVIEW_DATE
+
+    # Save the goal to the goals file
+    echo "$GOAL | Review: $REVIEW_DATE" >> "$GOALS_FILE"
+    echo "Goal added successfully."
+}
+
+# Function to log daily reflections
+log_reflection() {
+    DATE=$(date +'%Y-%m-%d')
+    echo "How did you feel today? (e.g., energized, stressed, focused)"
+    read FEELING
+    echo "What went well today?"
+    read POSITIVE
+    echo "What could you improve tomorrow?"
+    read IMPROVEMENT
+
+
+    echo "Reflection for $DATE:" > "$REFLECTIONS_FILE"
+    echo "Feeling: $FEELING" >> "$REFLECTIONS_FILE"
+    echo "Positive: $POSITIVE" >> "$REFLECTIONS_FILE"
+    echo "Improvement: $IMPROVEMENT" >> "$REFLECTIONS_FILE"
+    echo "Reflection saved."
+}
+
     # Save the habit to the habits file
     echo "$HABIT_NAME|$DESCRIPTION" >> "$HABITS_FILE"
     echo "'$HABIT_NAME' added successfully to your habit tracker."
