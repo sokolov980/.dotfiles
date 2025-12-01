@@ -10,6 +10,7 @@ GOALS_FILE="$TRACKER_DIR/goals.txt"
 HABITS_FILE="$TRACKER_DIR/habits.txt"
 STREAK_FILE="$TRACKER_DIR/streaks.txt"
 REFLECTIONS_FILE="$TRACKER_DIR/reflections.md"
+SUBGOALS_FILE="$TRACKER_DIR/subgoals.txt"
 
 # Create directories if they don't exist
 mkdir -p "$LOG_DIR"
@@ -21,6 +22,8 @@ add_habit() {
     read HABIT_NAME
     echo "Enter a brief description (optional):"
     read DESCRIPTION
+    echo "Enter the priority for this habit (1 = High, 2 = Medium, 3 = Low):"
+    read PRIORITY
 
     # Check if habit already exists to avoid duplicates
     if grep -q "$HABIT_NAME" "$HABITS_FILE"; then
@@ -28,17 +31,17 @@ add_habit() {
         return
     fi
 
-    # Save the habit to the habits file
-    echo "$HABIT_NAME|$DESCRIPTION" >> "$HABITS_FILE"
+    # Save the habit to the habits file with priority
+    echo "$HABIT_NAME|$DESCRIPTION|Priority: $PRIORITY" >> "$HABITS_FILE"
     echo "'$HABIT_NAME' added successfully."
 }
 
-# Function to log a completed habit for today
+# Function to log a completed habit for today (multiple completions allowed)
 log_habit() {
     DATE=$(date +'%Y-%m-%d')
     echo "Which habit did you complete today?"
-    cat "$HABITS_FILE" | while IFS="|" read NAME DESC; do
-        echo "- $NAME"
+    cat "$HABITS_FILE" | while IFS="|" read NAME DESC PRIORITY; do
+        echo "- $NAME (Priority: $PRIORITY)"
     done
     echo "Enter the habit you completed today (exact match):"
     read COMPLETED_HABIT
@@ -49,16 +52,21 @@ log_habit() {
         return
     fi
 
-    echo "Any notes for today? (Optional)"
-    read NOTES
+    echo "How many times did you complete $COMPLETED_HABIT today?"
+    read TIMES
 
-    # Log the habit completion
-    LOG_FILE="$LOG_DIR/$DATE.txt"
-    echo "$DATE: Habit Completed: $COMPLETED_HABIT | Notes: $NOTES" >> "$LOG_FILE"
-    echo "Habit logged for $DATE."
+    for i in $(seq 1 $TIMES); do
+        echo "Any notes for this completion? (Optional)"
+        read NOTES
 
-    # Update streaks
-    update_streak "$COMPLETED_HABIT"
+        # Log the habit completion
+        LOG_FILE="$LOG_DIR/$DATE.txt"
+        echo "$DATE: Habit Completed: $COMPLETED_HABIT | Notes: $NOTES" >> "$LOG_FILE"
+        echo "Habit logged for $DATE."
+
+        # Update streaks
+        update_streak "$COMPLETED_HABIT"
+    done
 }
 
 # Function to update streaks for habits
@@ -85,7 +93,7 @@ update_streak() {
     echo "Streak for '$HABIT' updated."
 }
 
-# Function to add or update a long-term goal
+# Function to add a long-term goal with sub-goals
 add_goal() {
     echo "Enter your long-term goal (e.g., Learn a new language, Run a marathon):"
     read GOAL
@@ -97,6 +105,20 @@ add_goal() {
     # Save the goal to the goals file
     echo "$GOAL | Progress: $PROGRESS | Review: $REVIEW_DATE" >> "$GOALS_FILE"
     echo "Goal added successfully."
+
+    # Add sub-goals if any
+    echo "Do you want to add any sub-goals for this goal? (yes/no)"
+    read ADD_SUBGOALS
+    if [ "$ADD_SUBGOALS" == "yes" ]; then
+        echo "Enter sub-goals for this goal (one per line). Type 'done' when finished:"
+        while :; do
+            read SUBGOAL
+            if [ "$SUBGOAL" == "done" ]; then
+                break
+            fi
+            echo "$GOAL | Sub-goal: $SUBGOAL" >> "$SUBGOALS_FILE"
+        done
+    fi
 }
 
 # Function to log daily reflections
