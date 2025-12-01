@@ -73,3 +73,52 @@ log_reflection() {
     echo "$HABIT_NAME|$DESCRIPTION" >> "$HABITS_FILE"
     echo "'$HABIT_NAME' added successfully to your habit tracker."
 }
+
+
+# Function to view progress on goals
+view_goals() {
+    echo "Your long-term goals:"
+    if [ -f "$GOALS_FILE" ]; then
+        cat "$GOALS_FILE"
+    else
+        echo "No goals added yet. Start tracking your long-term goals!"
+    fi
+}
+
+# Function to see a summary of your growth logs for today
+view_summary() {
+    DATE=$(date +'%Y-%m-%d')
+    LOG_FILE="$LOG_DIR/$DATE.txt"
+    
+    if [ -f "$LOG_FILE" ]; then
+        echo "Summary for $DATE:"
+        cat "$LOG_FILE"
+    else
+        echo "No activities logged for today."
+    fi
+}
+
+# Function to show an overview of your reflections
+view_reflections() {
+    echo "Your daily reflections:"
+    if [ -f "$REFLECTIONS_FILE" ]; then
+        cat "$REFLECTIONS_FILE"
+    else
+        echo "No reflections saved yet. Start reflecting on your day!"
+    fi
+}
+
+# Main Menu
+clear
+echo "Welcome to GrowthLog: Your personal growth tracker!"
+echo "Choose an action:"
+echo "1) Add a new habit"
+echo "2) Log a habit for today"
+echo "3) Add or update a long-term goal"
+echo "4) Log today's reflection"
+echo "5) View goal progress"
+echo "6) View daily summary"
+echo "7) View past reflections"
+echo "8) Exit"
+read ACTION
+
