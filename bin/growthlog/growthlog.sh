@@ -122,3 +122,32 @@ echo "7) View past reflections"
 echo "8) Exit"
 read ACTION
 
+case $ACTION in
+    1)
+        add_habit
+        ;;
+    2)
+        log_habit
+        ;;
+    3)
+        add_goal
+        ;;
+    4)
+        log_reflection
+        ;;
+    5)
+        view_goals
+        ;;
+    6)
+        view_summary
+        ;;
+    7)
+        view_reflections
+        ;;
+    8)
+        echo "Goodbye!"
+        ;;
+    *)
+        echo "Invalid option. Please choose a valid action."
+        ;;
+esac
