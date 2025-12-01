@@ -2,7 +2,7 @@
 
 # growthlog.sh - A comprehensive personal growth tracker
 # This script tracks habits, long-term goals, daily reflections, and more.
-# It features streak tracking, progress summaries, and goal completion reports.
+# It features streak tracking, progress summaries, goal completion reports, and calendar views.
 
 TRACKER_DIR="$HOME/growthlog"
 LOG_DIR="$TRACKER_DIR/logs"
@@ -116,11 +116,17 @@ log_reflection() {
     echo "Reflection saved."
 }
 
-# Function to view progress on goals
-view_goals() {
-    echo "Your long-term goals:"
+# Function to view progress on goals with a simple progress bar
+view_goal_progress() {
+    echo "Viewing progress for your goals:"
     if [ -f "$GOALS_FILE" ]; then
-        cat "$GOALS_FILE"
+        while IFS="|" read GOAL PROGRESS REVIEW_DATE; do
+            # Extract the progress percentage
+            PERCENTAGE=$(echo $PROGRESS | grep -o '[0-9]*')
+            BAR=$(printf "%-${PERCENTAGE}s" "#" | sed 's/ /#/g')  # Bar representation
+            SPACES=$(printf "%-$((100 - PERCENTAGE))s" " ")  # Spaces for the remaining part
+            echo "$GOAL | Progress: [$BAR$SPACES] $PERCENTAGE%"
+        done < "$GOALS_FILE"
     else
         echo "No goals added yet. Start tracking your long-term goals!"
     fi
@@ -139,7 +145,7 @@ view_summary() {
     fi
 }
 
-# Function to view streaks for a habit
+# Function to view habit streaks
 view_streaks() {
     echo "Your habit streaks:"
     if [ -f "$STREAK_FILE" ]; then
@@ -147,6 +153,27 @@ view_streaks() {
     else
         echo "No streaks recorded yet. Start tracking your habits to build streaks!"
     fi
+}
+
+# Function to view the calendar-like habit tracker for the current month
+view_calendar() {
+    echo "Displaying calendar for the current month:"
+    cal | awk 'BEGIN {print "Sun Mon Tue Wed Thu Fri Sat"} {print $0}' # Prints the calendar
+
+    CURRENT_MONTH=$(date +'%Y-%m')
+    for DAY in $(seq -f "%02g" 1 31); do
+        DATE="$CURRENT_MONTH-$DAY"
+        LOG_FILE="$LOG_DIR/$DATE.txt"
+
+        if [ -f "$LOG_FILE" ]; then
+            echo -n "$DAY: [✓] "
+        else
+            echo -n "$DAY: [ ] "
+        fi
+        if [ $((DAY % 7)) -eq 0 ]; then
+            echo ""  # New line for each week
+        fi
+    done
 }
 
 # Main Menu
@@ -160,7 +187,8 @@ echo "4) Log today's reflection"
 echo "5) View goal progress"
 echo "6) View daily summary"
 echo "7) View habit streaks"
-echo "8) Exit"
+echo "8) View calendar"
+echo "9) Exit"
 read ACTION
 
 case $ACTION in
@@ -177,7 +205,7 @@ case $ACTION in
         log_reflection
         ;;
     5)
-        view_goals
+        view_goal_progress
         ;;
     6)
         view_summary
@@ -186,6 +214,9 @@ case $ACTION in
         view_streaks
         ;;
     8)
+        view_calendar
+        ;;
+    9)
         echo "Goodbye!"
         ;;
     *)
