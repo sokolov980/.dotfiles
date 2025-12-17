@@ -1,8 +1,10 @@
 #!/bin/bash
-
-# growthlog.sh - Comprehensive personal growth tracker
+# growthlog.sh - Production-ready personal growth tracker
 # Features: habits, goals with sub-goals, reflections (optional encryption), streaks, calendar, stats, search, export
 
+# ---------------------------
+# Directory Setup
+# ---------------------------
 TRACKER_DIR="$HOME/growthlog"
 LOG_DIR="$TRACKER_DIR/logs"
 GOALS_FILE="$TRACKER_DIR/goals.txt"
@@ -15,8 +17,20 @@ EXPORT_DIR="$TRACKER_DIR/exports"
 mkdir -p "$LOG_DIR" "$TRACKER_DIR" "$EXPORT_DIR"
 
 # ---------------------------
-# Utility functions
+# Colors for CLI
 # ---------------------------
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[0;34m"
+CYAN="\033[0;36m"
+NC="\033[0m"
+
+# ---------------------------
+# Utility Functions
+# ---------------------------
+current_date() { date +'%Y-%m-%d'; }
+
 validate_number() {
     local INPUT=$1
     while ! [[ "$INPUT" =~ ^[0-9]+$ ]]; do
@@ -26,8 +40,13 @@ validate_number() {
     echo "$INPUT"
 }
 
-current_date() {
-    date +'%Y-%m-%d'
+validate_date() {
+    local INPUT=$1
+    while ! date -d "$INPUT" "+%Y-%m-%d" >/dev/null 2>&1; do
+        echo "Enter a valid date (YYYY-MM-DD):"
+        read INPUT
+    done
+    echo "$INPUT"
 }
 
 # ---------------------------
@@ -36,15 +55,9 @@ current_date() {
 add_habit() {
     echo "Enter habit name:"
     read HABIT_NAME
-
-    if grep -q "^$HABIT_NAME|" "$HABITS_FILE" 2>/dev/null; then
-        echo "'$HABIT_NAME' already exists."
-        return
-    fi
-
+    grep -q "^$HABIT_NAME|" "$HABITS_FILE" 2>/dev/null && { echo "'$HABIT_NAME' already exists."; return; }
     echo "Enter brief description (optional):"
     read DESCRIPTION
-
     echo "Enter priority (1=High,2=Medium,3=Low):"
     read PRIORITY
     PRIORITY=$(validate_number "$PRIORITY")
@@ -52,7 +65,6 @@ add_habit() {
         echo "Priority must be 1,2, or 3:"
         read PRIORITY
     done
-
     echo "Select category: 1) Health 2) Learning 3) Productivity"
     read CAT
     case $CAT in
@@ -61,33 +73,21 @@ add_habit() {
         3) CATEGORY="Productivity" ;;
         *) CATEGORY="General" ;;
     esac
-
     echo "$HABIT_NAME|$DESCRIPTION|Priority:$PRIORITY|Category:$CATEGORY" >> "$HABITS_FILE"
-    echo "'$HABIT_NAME' added successfully under category $CATEGORY."
+    echo -e "${GREEN}'$HABIT_NAME' added under $CATEGORY.${NC}"
 }
 
 log_habit() {
     DATE=$(current_date)
-    if [ ! -f "$HABITS_FILE" ]; then
-        echo "No habits to log."
-        return
-    fi
-
-    echo "Your habits:"
+    [ ! -f "$HABITS_FILE" ] && { echo "No habits to log."; return; }
+    echo -e "${CYAN}Your habits:${NC}"
     awk -F"|" '{print "- " $1 " (" $4 ", " $3 ")"}' "$HABITS_FILE"
-
-    echo "Enter the habit completed today (exact match):"
+    echo "Enter completed habit:"
     read COMPLETED_HABIT
-
-    if ! grep -q "^$COMPLETED_HABIT|" "$HABITS_FILE"; then
-        echo "Habit not found."
-        return
-    fi
-
-    echo "How many times did you complete $COMPLETED_HABIT today?"
+    ! grep -q "^$COMPLETED_HABIT|" "$HABITS_FILE" && { echo "Habit not found."; return; }
+    echo "Times completed today:"
     read TIMES
     TIMES=$(validate_number "$TIMES")
-
     for i in $(seq 1 $TIMES); do
         echo "Notes (optional):"
         read NOTES
@@ -95,7 +95,7 @@ log_habit() {
         echo "$DATE: Habit Completed: $COMPLETED_HABIT | Notes: $NOTES" >> "$LOG_FILE"
         update_streak "$COMPLETED_HABIT"
     done
-    echo "Logged $COMPLETED_HABIT $TIMES time(s) for $DATE."
+    echo -e "${GREEN}Logged $COMPLETED_HABIT $TIMES time(s) for $DATE.${NC}"
 }
 
 # ---------------------------
@@ -104,11 +104,7 @@ log_habit() {
 update_streak() {
     HABIT=$1
     TODAY=$(current_date)
-    if [ ! -f "$STREAK_FILE" ]; then
-        echo "$HABIT|1|$TODAY" >> "$STREAK_FILE"
-        return
-    fi
-
+    [ ! -f "$STREAK_FILE" ] && { echo "$HABIT|1|$TODAY" >> "$STREAK_FILE"; return; }
     EXISTING=$(grep "^$HABIT|" "$STREAK_FILE")
     if [ -z "$EXISTING" ]; then
         echo "$HABIT|1|$TODAY" >> "$STREAK_FILE"
@@ -130,13 +126,11 @@ update_streak() {
 }
 
 view_streaks() {
-    if [ ! -f "$STREAK_FILE" ]; then
-        echo "No streaks yet."
-        return
-    fi
-    echo "Habit streaks:"
+    [ ! -f "$STREAK_FILE" ] && { echo "No streaks yet."; return; }
+    echo -e "${CYAN}Habit streaks:${NC}"
     while IFS='|' read HABIT COUNT LAST; do
-        echo "$HABIT: $COUNT day(s) (last logged: $LAST)"
+        COLOR=$([ "$COUNT" -ge 5 ] && echo "$GREEN" || echo "$YELLOW")
+        echo -e "${COLOR}$HABIT: $COUNT day(s) (last logged: $LAST)${NC}"
     done < "$STREAK_FILE"
 }
 
@@ -148,19 +142,16 @@ add_goal() {
     read GOAL
     echo "Optional review date (YYYY-MM-DD):"
     read REVIEW_DATE
-
+    [ -n "$REVIEW_DATE" ] && REVIEW_DATE=$(validate_date "$REVIEW_DATE")
     echo "$GOAL|Progress:0|Review:$REVIEW_DATE" >> "$GOALS_FILE"
-    echo "Goal added."
-
+    echo -e "${GREEN}Goal added.${NC}"
     echo "Add sub-goals? (yes/no)"
     read SUB
-    if [ "$SUB" == "yes" ]; then
-        while :; do
-            read SUBGOAL
-            [ "$SUBGOAL" == "done" ] && break
-            echo "$GOAL|Sub-goal:$SUBGOAL|pending" >> "$SUBGOALS_FILE"
-        done
-    fi
+    [ "$SUB" == "yes" ] && while :; do
+        read SUBGOAL
+        [ "$SUBGOAL" == "done" ] && break
+        echo "$GOAL|Sub-goal:$SUBGOAL|pending" >> "$SUBGOALS_FILE"
+    done
 }
 
 mark_subgoal_done() {
@@ -171,13 +162,13 @@ mark_subgoal_done() {
     read SUBGOAL
     sed -i.bak "s|$GOAL|Sub-goal:$SUBGOAL|pending|$GOAL|Sub-goal:$SUBGOAL|done|" "$SUBGOALS_FILE"
     update_goal_progress "$GOAL"
-    echo "Sub-goal marked done and progress updated."
+    echo -e "${GREEN}Sub-goal marked done.${NC}"
 }
 
 update_goal_progress() {
     GOAL=$1
     TOTAL=$(grep "^$GOAL|" "$SUBGOALS_FILE" | wc -l)
-    if ((TOTAL==0)); then return; fi
+    [ "$TOTAL" -eq 0 ] && return
     COMPLETED=$(grep "^$GOAL|" "$SUBGOALS_FILE" | grep -c "done")
     PERCENT=$((COMPLETED*100/TOTAL))
     REVIEW_DATE=$(grep "^$GOAL|" "$GOALS_FILE" | cut -d'|' -f3)
@@ -187,22 +178,19 @@ update_goal_progress() {
 }
 
 view_goal_progress() {
-    if [ ! -f "$GOALS_FILE" ]; then
-        echo "No goals added."
-        return
-    fi
+    [ ! -f "$GOALS_FILE" ] && { echo "No goals added."; return; }
     BAR_WIDTH=20
     while IFS='|' read GOAL PROG REVIEW; do
         PERCENT=$(echo $PROG | grep -o '[0-9]*')
         FILLED=$((PERCENT*BAR_WIDTH/100))
-        BAR=$(printf "%0.s#" $(seq 1 $FILLED))
-        SPACES=$(printf "%0.s-" $(seq 1 $((BAR_WIDTH-FILLED))))
-        echo "$GOAL | Progress: [$BAR$SPACES] $PERCENT%"
+        BAR=$(printf "%0.s█" $(seq 1 $FILLED))
+        SPACES=$(printf "%0.s░" $(seq 1 $((BAR_WIDTH-FILLED))))
+        echo -e "${CYAN}$GOAL${NC} | Progress: [$BAR$SPACES] $PERCENT%"
     done < "$GOALS_FILE"
 }
 
 # ---------------------------
-# Reflections (Optional Encryption)
+# Reflections with Encryption
 # ---------------------------
 log_reflection() {
     DATE=$(current_date)
@@ -212,72 +200,70 @@ log_reflection() {
     read POSITIVE
     echo "What could be improved?"
     read IMPROVEMENT
-
     ENTRY="### Reflection $DATE\nFeeling: $FEELING\nPositive: $POSITIVE\nImprovement: $IMPROVEMENT\n"
     echo -e "$ENTRY" >> "$REFLECTIONS_FILE"
-
     echo "Encrypt reflection? (yes/no)"
     read ENC
-    if [ "$ENC" == "yes" ]; then
+    [ "$ENC" == "yes" ] && {
         echo "Enter passphrase:"
         read -s PASS
         echo -e "$ENTRY" | openssl enc -aes-256-cbc -pbkdf2 -salt -pass pass:"$PASS" -out "$REFLECTIONS_FILE.enc.$DATE"
-        echo "Reflection encrypted."
-    fi
+        echo -e "${GREEN}Reflection encrypted.${NC}"
+    }
 }
 
 search_logs() {
-    echo "Enter keyword to search logs/reflections:"
+    echo "Keyword to search logs/reflections:"
     read KEY
     grep -i "$KEY" "$LOG_DIR/"* "$REFLECTIONS_FILE" 2>/dev/null || echo "No matches found."
 }
 
 # ---------------------------
-# Calendar
+# Calendar & Visualization
 # ---------------------------
 view_calendar() {
     YEAR=$(date +%Y)
     MONTH=$(date +%m)
     DAYS=$(date -d "$YEAR-$MONTH-01 +1 month -1 day" +%d 2>/dev/null || date -v+1m -v-1d +%d)
-    echo "Calendar for $YEAR-$MONTH"
+    echo -e "${CYAN}Calendar for $YEAR-$MONTH${NC}"
     cal $MONTH $YEAR 2>/dev/null || cal $MONTH $YEAR
     for DAY in $(seq -f "%02g" 1 $DAYS); do
         DATE="$YEAR-$MONTH-$DAY"
-        if [ -f "$LOG_DIR/$DATE.txt" ]; then
-            echo -n "$DAY:[✓] "
-        else
-            echo -n "$DAY:[ ] "
-        fi
-        if ((DAY%7==0)); then echo ""; fi
+        FILE="$LOG_DIR/$DATE.txt"
+        [ -f "$FILE" ] && echo -ne "${GREEN}$DAY[✓]${NC} " || echo -ne "$DAY[ ] "
+        ((DAY%7==0)) && echo ""
     done
     echo ""
 }
 
 # ---------------------------
-# Stats and Reports
+# Stats & Reports
 # ---------------------------
 view_stats() {
-    echo "Weekly/Monthly Stats:"
-    if [ -f "$STREAK_FILE" ]; then
-        LONGEST=$(awk -F'|' '{print $2,$1}' "$STREAK_FILE" | sort -nr | head -n1)
-        echo "Longest streak: $LONGEST"
-    fi
+    echo -e "${CYAN}Weekly/Monthly Stats:${NC}"
+    [ -f "$STREAK_FILE" ] && awk -F'|' '{print $2,$1}' "$STREAK_FILE" | sort -nr | head -n1 | awk '{print "Longest streak: "$1" days for "$2}'
     TOTAL_HABITS=$(wc -l < "$HABITS_FILE" 2>/dev/null || echo 0)
     TOTAL_LOGS=$(grep -hr "Habit Completed" "$LOG_DIR" 2>/dev/null | wc -l)
-    if ((TOTAL_HABITS>0)); then
-        RATE=$((TOTAL_LOGS*100/TOTAL_HABITS))
-        echo "Completion rate: $RATE%"
-    fi
+    ((TOTAL_HABITS>0)) && echo "Completion rate: $((TOTAL_LOGS*100/TOTAL_HABITS))%"
 }
 
 # ---------------------------
 # Export / Backup
 # ---------------------------
 export_logs() {
-    cp "$LOG_DIR/"* "$EXPORT_DIR/"
-    cp "$GOALS_FILE" "$EXPORT_DIR/"
-    cp "$REFLECTIONS_FILE" "$EXPORT_DIR/"
-    echo "Exported logs, goals, and reflections to $EXPORT_DIR"
+    cp "$LOG_DIR/"* "$EXPORT_DIR/" 2>/dev/null
+    cp "$GOALS_FILE" "$EXPORT_DIR/" 2>/dev/null
+    cp "$REFLECTIONS_FILE" "$EXPORT_DIR/" 2>/dev/null
+    echo -e "${GREEN}Exported logs, goals, reflections to $EXPORT_DIR${NC}"
+}
+
+# ---------------------------
+# Daily Summary
+# ---------------------------
+view_summary() {
+    DATE=$(current_date)
+    FILE="$LOG_DIR/$DATE.txt"
+    [ -f "$FILE" ] && cat "$FILE" || echo "No activities logged today."
 }
 
 # ---------------------------
@@ -285,22 +271,21 @@ export_logs() {
 # ---------------------------
 while true; do
     clear
-    echo "GrowthLog - Personal Tracker"
-    echo "1) Add a new habit"
-    echo "2) Log a habit for today"
-    echo "3) Add or update a goal"
-    echo "4) Mark sub-goal as done"
-    echo "5) Log today's reflection"
+    echo -e "${BLUE}GrowthLog - Personal Tracker${NC}"
+    echo "1) Add habit"
+    echo "2) Log habit"
+    echo "3) Add/update goal"
+    echo "4) Mark sub-goal done"
+    echo "5) Log reflection"
     echo "6) View goal progress"
-    echo "7) View daily summary"
-    echo "8) View habit streaks"
+    echo "7) Daily summary"
+    echo "8) View streaks"
     echo "9) View calendar"
-    echo "10) View stats"
+    echo "10) Stats"
     echo "11) Search logs/reflections"
     echo "12) Export logs/goals/reflections"
     echo "13) Exit"
-
-    read ACTION
+    read -p "Choose: " ACTION
     case $ACTION in
         1) add_habit ;;
         2) log_habit ;;
@@ -315,6 +300,6 @@ while true; do
         11) search_logs ;;
         12) export_logs ;;
         13) echo "Goodbye!"; exit ;;
-        *) echo "Invalid option."; sleep 1 ;;
+        *) echo -e "${RED}Invalid option.${NC}"; sleep 1 ;;
     esac
 done
