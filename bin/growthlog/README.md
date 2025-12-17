@@ -1,7 +1,10 @@
 # growthlog
 
 A comprehensive personal growth tracker for the command line.  
-Tracks habits, goals, sub-goals, daily reflections, streaks, calendar, weekly/monthly stats, and optional encrypted reflections. Designed for personal productivity and self-improvement.
+
+Tracks habits, goals, sub-goals, daily reflections, streaks, calendar, weekly/monthly stats, and optional encrypted reflections. 
+
+Designed for personal productivity and self-improvement.
 
 ---
 
