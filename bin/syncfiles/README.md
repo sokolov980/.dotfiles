@@ -1,6 +1,6 @@
 # syncfiles
 
-Cross-platform dotfile sync tool with multi-remote support, versioned backups, hooks, selective sync, and verbose mode.
+A cross-platform dotfile sync tool with multi-remote support, versioned backups, hooks, selective sync, and verbose mode.
 
 ---
 
