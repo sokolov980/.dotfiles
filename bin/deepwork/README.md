@@ -30,7 +30,7 @@ Follow the interactive prompts to configure your session.
 
 - **Automatic cleanup:** Restores `/etc/hosts` and disables DND after session.
 
-- **Interruptible:** Press a key during startup countdown to cancel session safely.
+- **Interruptible:** Press a key during the startup countdown to cancel session safely.
 
 ---
 
@@ -59,7 +59,7 @@ During prompts:
 How long (hours, e.g. 1.5): 1
 Play soundtrack? (y/n): y
 Path to custom mp3 file: ~/Music/focus.mp3
-Websites to block (comma-separated): youtube.com, x.com, instagram.com, amazon.com
+Websites to block (comma-separated): x.com, youtube.com, instagram.com, amazon.com
 Enable Pomodoro? (y/n): y
 Work minutes (e.g., 25): 25
 Break minutes (e.g., 5): 5
