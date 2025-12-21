@@ -59,7 +59,7 @@ During prompts:
 How long (hours, e.g. 1.5): 1
 Play soundtrack? (y/n): y
 Path to custom mp3 file: ~/Music/focus.mp3
-Websites to block (comma-separated): facebook.com,youtube.com
+Websites to block (comma-separated): youtube.com, x.com, instagram.com, amazon.com, netflix.com
 Enable Pomodoro? (y/n): y
 Work minutes (e.g., 25): 25
 Break minutes (e.g., 5): 5
