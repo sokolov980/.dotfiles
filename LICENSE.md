@@ -1,4 +1,4 @@
-Copyright (c) 2025 Sokolov. All rights reserved.
+Copyright (c) 2025-present Sokolov. All rights reserved.
 
 All files in this repository, including configuration files, scripts, and setup instructions (the "Content"), are proprietary.
 
