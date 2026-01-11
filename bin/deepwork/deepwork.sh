@@ -17,9 +17,12 @@ cleanup() {
   echo "[✓] Unlocking..."
 
   if [[ "$HOSTS_MODIFIED" == true && -f "$HOSTS_BACKUP" ]]; then
-    sudo mv "$HOSTS_BACKUP" /etc/hosts
+    sudo cp "$HOSTS_BACKUP" /etc/hosts
+    sudo chmod 644 /etc/hosts
+    sudo chown root:wheel /etc/hosts
     sudo dscacheutil -flushcache
     sudo killall -HUP mDNSResponder 2>/dev/null || true
+    sudo rm -f "$HOSTS_BACKUP"
     echo "[✓] Websites unblocked"
   fi
 
@@ -34,6 +37,7 @@ trap cleanup EXIT INT TERM
 # ===== FUNCTIONS =====
 block_websites() {
   local raw_sites="$1"
+
   echo "[+] Blocking websites..."
 
   sudo cp /etc/hosts "$HOSTS_BACKUP"
@@ -72,6 +76,7 @@ run_arttime_hours() {
 
 run_pomodoro() {
   local work="$1" break="$2" rounds="$3"
+
   for ((i=1; i<=rounds; i++)); do
     arttime --nolearn -a butterfly -t "deep work – focus ($i/$rounds)" -g "${work}m"
     [[ "$i" -lt "$rounds" ]] && \
@@ -79,17 +84,17 @@ run_pomodoro() {
   done
 }
 
-# ===== PROMPTS (EXACT STYLE) =====
+# ===== PROMPTS =====
 read "hours?> how long? (in hours): "
-read "music?> Play soundtrack? (y/n): "
-[[ "$music" == "y" ]] && read "music_file?> Path to custom mp3 file: "
-read "sites?> Websites to block (comma-separated): "
-read "pomodoro?> Enable Pomodoro? (y/n): "
+read "music?> play soundtrack? (y/n): "
+[[ "$music" == "y" ]] && read "music_file?> path to custom mp3 file: "
+read "sites?> websites to block (comma-separated): "
+read "pomodoro?> enable pomodoro? (y/n): "
 
 if [[ "$pomodoro" == "y" ]]; then
-  read "work?> Work minutes (e.g., 25): "
-  read "break?> Break minutes (e.g., 5): "
-  read "rounds?> Number of Pomodoro rounds: "
+  read "work?> work minutes (e.g., 25): "
+  read "break?> break minutes (e.g., 5): "
+  read "rounds?> number of pomodoro rounds: "
 fi
 
 # ===== CONFIRMATION + COUNTDOWN =====
