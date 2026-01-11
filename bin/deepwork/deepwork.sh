@@ -5,21 +5,17 @@ set -uo pipefail
 DND_ON_SCRIPT="$HOME/.deepwork/enable_dnd.sh"
 DND_OFF_SCRIPT="$HOME/.deepwork/disable_dnd.sh"
 ARTTIME="$(command -v arttime || true)"
+MPV="$(command -v mpv || true)"
 HOSTS_BACKUP="/etc/hosts.backup.deepwork"
-
-ASCII_ART='
- ____                        _
-|  _ \  ___  ___ ___  _ __ | |_ ___ _ __ ___
-| | | |/ _ \/ __/ _ \| `_ \| __/ _ \ `_ ` _ \
-| |_| |  __/ (_| (_) | | | | ||  __/ | | | | |
-|____/ \___|\___\___/|_| |_|\__\___|_| |_| |_|
-'
 
 HOSTS_MODIFIED=false
 SOUND_PID=""
+POMODORO_MODE=false
 
+# ===== CLEANUP =====
 cleanup() {
-  echo -e "\n\n[✓] Unlocking..."
+  echo
+  echo "[✓] Unlocking..."
 
   if [[ "$HOSTS_MODIFIED" == true && -f "$HOSTS_BACKUP" ]]; then
     sudo mv "$HOSTS_BACKUP" /etc/hosts
@@ -35,11 +31,14 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# ===== FUNCTIONS =====
 block_websites() {
   local raw_sites="$1"
+
   echo "[+] Blocking websites..."
 
-  [[ ! -f "$HOSTS_BACKUP" ]] && sudo cp /etc/hosts "$HOSTS_BACKUP"
+  sudo cp /etc/hosts "$HOSTS_BACKUP"
+
   echo "# Blocked by deepwork" | sudo tee -a /etc/hosts >/dev/null
 
   IFS=',' read -ra ADDR <<<"$raw_sites"
@@ -51,52 +50,63 @@ block_websites() {
   HOSTS_MODIFIED=true
 }
 
+play_soundtrack() {
+  local file="$1"
+  [[ -x "$MPV" && -f "$file" ]] || return
+  mpv --loop=inf --no-video "$file" >/dev/null 2>&1 &
+  SOUND_PID=$!
+}
+
+start_arttime_hours() {
+  local hours="$1"
+  local h=${hours%.*}
+  local m=$(awk "BEGIN { printf(\"%.0f\", ($hours - $h) * 60) }")
+  [[ "$h" -eq 0 ]] && time_arg="${m}m" || time_arg="${h}h${m}m"
+  "$ARTTIME" --nolearn -a butterfly -t "deep work time – blocking distractions" -g "$time_arg"
+}
+
+run_pomodoro() {
+  local work="$1" break="$2" rounds="$3"
+
+  for ((i=1; i<=rounds; i++)); do
+    "$ARTTIME" --nolearn -a butterfly -t "deep work – focus ($i/$rounds)" -g "${work}m"
+    [[ "$i" -lt "$rounds" ]] && \
+      "$ARTTIME" --nolearn -a butterfly -t "deep work – break" -g "${break}m"
+  done
+}
+
 # ===== PROMPTS =====
 read -rp "How long (hours, e.g. 1.5): " hours
+read -rp "Play soundtrack? (y/n): " play_music
+[[ "$play_music" =~ ^[Yy]$ ]] && read -rp "Path to custom mp3 file: " music_file
 read -rp "Websites to block (comma-separated): " sites
+read -rp "Enable Pomodoro? (y/n): " pomodoro
 
+if [[ "$pomodoro" =~ ^[Yy]$ ]]; then
+  POMODORO_MODE=true
+  read -rp "Work minutes (e.g., 25): " work_minutes
+  read -rp "Break minutes (e.g., 5): " break_minutes
+  read -rp "Number of Pomodoro rounds: " rounds
+fi
+
+# ===== COUNTDOWN =====
 echo
-echo "$ASCII_ART"
 echo "Deep work starting soon…"
 echo "Press any key in the next 10 seconds to cancel."
 
-if read -t 10 -n 1; then
-  echo "Cancelled."
-  exit 1
-fi
+for i in {10..1}; do
+  echo -n "$i... "
+  read -t 1 -n 1 && { echo "Cancelled."; exit 1; }
+done
+echo
 
-if [[ -z "$ARTTIME" ]]; then
-  echo "[!] arttime is not installed or not in PATH."
-  exit 1
-fi
-
+# ===== SESSION START =====
 [[ -n "$sites" ]] && block_websites "$sites"
 [[ -x "$DND_ON_SCRIPT" ]] && "$DND_ON_SCRIPT"
+[[ "$play_music" =~ ^[Yy]$ ]] && play_soundtrack "$music_file"
 
-# ===== TIMER FORMATTING =====
-
-# Get integer hours
-hours_int=${hours%.*}
-
-# Calculate the remaining minutes (rounded)
-minutes=$(awk "BEGIN { printf(\"%.0f\", ($hours - $hours_int) * 60) }")
-
-# If user input was fractional and hours_int is zero, handle properly
-if [[ "$hours_int" -eq 0 ]]; then
-  time_arg="${minutes}m"
+if [[ "$POMODORO_MODE" == true ]]; then
+  run_pomodoro "$work_minutes" "$break_minutes" "$rounds"
 else
-  time_arg="${hours_int}h${minutes}m"
+  start_arttime_hours "$hours"
 fi
-
-echo
-echo "[✓] Focus locked — launching arttime with goal: $time_arg"
-echo "[!] _Close_ arttime or let the timer finish to unlock"
-
-# Prevent Ctrl+C from skipping cleanup
-trap '' INT
-
-# Start arttime with delta time goal
-# `-g` flag can be used for non-interactive goal if supported 
-# Else, goal will be read interactively inside arttime
-# Use `--nolearn` to skip first-time help screens
-"$ARTTIME" --nolearn -g "$time_arg"
