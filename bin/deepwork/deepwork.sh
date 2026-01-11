@@ -1,29 +1,29 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 set -uo pipefail
 
 # ===== CONFIG =====
-DND_ON_SCRIPT="$HOME/.deepwork/enable_dnd.sh"
-DND_OFF_SCRIPT="$HOME/.deepwork/disable_dnd.sh"
 ARTTIME="$(command -v arttime || true)"
 MPV="$(command -v mpv || true)"
+DND_ON="$HOME/.deepwork/enable_dnd.sh"
+DND_OFF="$HOME/.deepwork/disable_dnd.sh"
 HOSTS_BACKUP="/etc/hosts.backup.deepwork"
 
 HOSTS_MODIFIED=false
 SOUND_PID=""
-POMODORO_MODE=false
 
 # ===== CLEANUP =====
 cleanup() {
-  echo
+  echo ""
   echo "[✓] Unlocking..."
 
   if [[ "$HOSTS_MODIFIED" == true && -f "$HOSTS_BACKUP" ]]; then
     sudo mv "$HOSTS_BACKUP" /etc/hosts
+    sudo dscacheutil -flushcache
+    sudo killall -HUP mDNSResponder 2>/dev/null || true
     echo "[✓] Websites unblocked"
   fi
 
-  [[ -x "$DND_OFF_SCRIPT" ]] && "$DND_OFF_SCRIPT"
-
+  [[ -x "$DND_OFF" ]] && "$DND_OFF"
   [[ -n "$SOUND_PID" ]] && kill "$SOUND_PID" 2>/dev/null || true
 
   echo "[✓] Deep work session complete."
@@ -34,18 +34,23 @@ trap cleanup EXIT INT TERM
 # ===== FUNCTIONS =====
 block_websites() {
   local raw_sites="$1"
-
   echo "[+] Blocking websites..."
 
   sudo cp /etc/hosts "$HOSTS_BACKUP"
-
   echo "# Blocked by deepwork" | sudo tee -a /etc/hosts >/dev/null
 
-  IFS=',' read -ra ADDR <<<"$raw_sites"
-  for site in "${ADDR[@]}"; do
-    domain="$(echo "$site" | sed -E 's~(https?://)?([^/]+).*~\2~' | tr -d '[:space:]')"
-    [[ -n "$domain" ]] && echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts >/dev/null
+  local sites domain
+  sites=(${(s:,:)raw_sites})
+
+  for site in $sites; do
+    domain=$(echo "$site" | sed -E 's~(https?://)?([^/]+).*~\2~' | tr -d '[:space:]')
+    [[ -n "$domain" ]] || continue
+    echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts >/dev/null
+    echo "::1 $domain" | sudo tee -a /etc/hosts >/dev/null
   done
+
+  sudo dscacheutil -flushcache
+  sudo killall -HUP mDNSResponder 2>/dev/null || true
 
   HOSTS_MODIFIED=true
 }
@@ -57,56 +62,56 @@ play_soundtrack() {
   SOUND_PID=$!
 }
 
-start_arttime_hours() {
+run_arttime_hours() {
   local hours="$1"
   local h=${hours%.*}
-  local m=$(awk "BEGIN { printf(\"%.0f\", ($hours - $h) * 60) }")
+  local m=$(( (hours - h) * 60 ))
   [[ "$h" -eq 0 ]] && time_arg="${m}m" || time_arg="${h}h${m}m"
-  "$ARTTIME" --nolearn -a butterfly -t "deep work time – blocking distractions" -g "$time_arg"
+  arttime --nolearn -a butterfly -t "deep work time – blocking distractions" -g "$time_arg"
 }
 
 run_pomodoro() {
   local work="$1" break="$2" rounds="$3"
-
   for ((i=1; i<=rounds; i++)); do
-    "$ARTTIME" --nolearn -a butterfly -t "deep work – focus ($i/$rounds)" -g "${work}m"
+    arttime --nolearn -a butterfly -t "deep work – focus ($i/$rounds)" -g "${work}m"
     [[ "$i" -lt "$rounds" ]] && \
-      "$ARTTIME" --nolearn -a butterfly -t "deep work – break" -g "${break}m"
+      arttime --nolearn -a butterfly -t "deep work – break" -g "${break}m"
   done
 }
 
-# ===== PROMPTS =====
-read -rp "How long (hours, e.g. 1.5): " hours
-read -rp "Play soundtrack? (y/n): " play_music
-[[ "$play_music" =~ ^[Yy]$ ]] && read -rp "Path to custom mp3 file: " music_file
-read -rp "Websites to block (comma-separated): " sites
-read -rp "Enable Pomodoro? (y/n): " pomodoro
+# ===== PROMPTS (EXACT STYLE) =====
+read "hours?> how long? (in hours): "
+read "music?> Play soundtrack? (y/n): "
+[[ "$music" == "y" ]] && read "music_file?> Path to custom mp3 file: "
+read "sites?> Websites to block (comma-separated): "
+read "pomodoro?> Enable Pomodoro? (y/n): "
 
-if [[ "$pomodoro" =~ ^[Yy]$ ]]; then
-  POMODORO_MODE=true
-  read -rp "Work minutes (e.g., 25): " work_minutes
-  read -rp "Break minutes (e.g., 5): " break_minutes
-  read -rp "Number of Pomodoro rounds: " rounds
+if [[ "$pomodoro" == "y" ]]; then
+  read "work?> Work minutes (e.g., 25): "
+  read "break?> Break minutes (e.g., 5): "
+  read "rounds?> Number of Pomodoro rounds: "
 fi
 
-# ===== COUNTDOWN =====
-echo
-echo "Deep work starting soon…"
-echo "Press any key in the next 10 seconds to cancel."
+# ===== CONFIRMATION + COUNTDOWN =====
+to_block=(${(s:,:)sites})
+
+echo ""
+echo "blocking ${to_block[*]} for $hours hours."
+echo "press any key to cancel..."
 
 for i in {10..1}; do
   echo -n "$i... "
-  read -t 1 -n 1 && { echo "Cancelled."; exit 1; }
+  read -t 1 -k 1 && { echo "cancelled."; exit 0; }
 done
-echo
+echo ""
 
-# ===== SESSION START =====
+# ===== START SESSION =====
 [[ -n "$sites" ]] && block_websites "$sites"
-[[ -x "$DND_ON_SCRIPT" ]] && "$DND_ON_SCRIPT"
-[[ "$play_music" =~ ^[Yy]$ ]] && play_soundtrack "$music_file"
+[[ -x "$DND_ON" ]] && "$DND_ON"
+[[ "$music" == "y" ]] && play_soundtrack "$music_file"
 
-if [[ "$POMODORO_MODE" == true ]]; then
-  run_pomodoro "$work_minutes" "$break_minutes" "$rounds"
+if [[ "$pomodoro" == "y" ]]; then
+  run_pomodoro "$work" "$break" "$rounds"
 else
-  start_arttime_hours "$hours"
+  run_arttime_hours "$hours"
 fi
