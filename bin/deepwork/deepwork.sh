@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -uo pipefail
 
 # ===== CONFIG =====
 
 DND_ON_SCRIPT="$HOME/.deepwork/enable_dnd.sh"
 DND_OFF_SCRIPT="$HOME/.deepwork/disable_dnd.sh"
 MPV="$(command -v mpv || true)"
-TIMER_ID="deepwork_timer"
+HOSTS_BACKUP="/etc/hosts.backup.deepwork"
 
 ASCII_ART='
  ____                        _
@@ -17,32 +17,43 @@ ASCII_ART='
 |____/ \___|\___\___/|_| |_|\__\___|_| |_| |_|
 '
 
-# ===== FUNCTIONS =====
+# ===== STATE =====
 
-trap cleanup EXIT
+HOSTS_MODIFIED=false
+SOUND_PID=""
+
+# ===== CLEANUP =====
 
 cleanup() {
   echo -e "\nCleaning up..."
 
-  if [[ -f /etc/hosts.backup.deepwork ]]; then
-    sudo mv /etc/hosts.backup.deepwork /etc/hosts
+  if [[ "$HOSTS_MODIFIED" == true && -f "$HOSTS_BACKUP" ]]; then
+    sudo mv "$HOSTS_BACKUP" /etc/hosts
+    echo "[✓] Hosts file restored"
   fi
 
   [[ -x "$DND_OFF_SCRIPT" ]] && "$DND_OFF_SCRIPT" || true
 
-  if [[ -n "${SOUND_PID:-}" ]]; then
+  if [[ -n "$SOUND_PID" ]]; then
     kill "$SOUND_PID" 2>/dev/null || true
   fi
 
   echo "Session ended."
 }
 
+trap cleanup EXIT INT TERM
+
+# ===== FUNCTIONS =====
+
 block_websites() {
   local raw_sites="$1"
 
   echo "[+] Blocking websites..."
 
-  sudo cp /etc/hosts /etc/hosts.backup.deepwork
+  if [[ ! -f "$HOSTS_BACKUP" ]]; then
+    sudo cp /etc/hosts "$HOSTS_BACKUP"
+  fi
+
   echo "# Blocked by deepwork" | sudo tee -a /etc/hosts >/dev/null
 
   IFS=',' read -ra ADDR <<<"$raw_sites"
@@ -51,10 +62,10 @@ block_websites() {
       | sed -E 's~(https?://)?([^/]+).*~\2~' \
       | tr -d '[:space:]')"
 
-    if [[ -n "$domain" ]]; then
-      echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts >/dev/null
-    fi
+    [[ -n "$domain" ]] && echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts >/dev/null
   done
+
+  HOSTS_MODIFIED=true
 }
 
 start_dnd() {
@@ -68,7 +79,7 @@ play_soundtrack() {
     "$MPV" --no-video --loop-file "$path" &
     SOUND_PID=$!
   else
-    echo "[!] Soundtrack file missing or mpv not installed."
+    echo "[!] Soundtrack skipped (mpv or file missing)"
   fi
 }
 
@@ -92,10 +103,10 @@ pomodoro_loop() {
   local rounds="$3"
 
   for ((i = 1; i <= rounds; i++)); do
-    echo "Pomodoro $i: Work for $work_min minutes."
+    echo "Pomodoro $i — work ($work_min min)"
     sleep $((work_min * 60))
 
-    echo "Break for $break_min minutes."
+    echo "Break ($break_min min)"
     sleep $((break_min * 60))
   done
 }
@@ -108,10 +119,7 @@ read -rp "Play soundtrack? (y/n): " play_music
 music_path=""
 if [[ "$play_music" == "y" ]]; then
   read -rp "Path to custom mp3 file: " music_path
-  if [[ ! -f "$music_path" ]]; then
-    echo "[!] File not found. Skipping music."
-    music_path=""
-  fi
+  [[ ! -f "$music_path" ]] && echo "[!] File not found, skipping music" && music_path=""
 fi
 
 read -rp "Websites to block (comma-separated): " sites
@@ -119,16 +127,21 @@ read -rp "Enable Pomodoro? (y/n): " enable_pomo
 
 use_pomo=false
 if [[ "$enable_pomo" == "y" ]]; then
-  read -rp "Work minutes (e.g., 25): " work_min
-  read -rp "Break minutes (e.g., 5): " break_min
-  read -rp "Number of Pomodoro rounds: " rounds
+  read -rp "Work minutes: " work_min
+  read -rp "Break minutes: " break_min
+  read -rp "Pomodoro rounds: " rounds
   use_pomo=true
 fi
 
 # ===== START SESSION =====
 
-echo -e "\nBlocking for $hours hour(s). Press any key to cancel..."
-read -t 10 -n 1 && { echo "Cancelled."; exit 1; }
+echo -e "\nBlocking for $hours hour(s)."
+echo "Press any key in the next 10 seconds to cancel..."
+
+if read -t 10 -n 1; then
+  echo "Cancelled."
+  exit 1
+fi
 
 [[ -n "$sites" ]] && block_websites "$sites"
 start_dnd
@@ -136,11 +149,11 @@ start_dnd
 
 countdown_timer
 
-if [[ "$use_pomo" == "true" ]]; then
+if [[ "$use_pomo" == true ]]; then
   pomodoro_loop "$work_min" "$break_min" "$rounds"
 else
-  sleep_time="$(awk "BEGIN {print $hours * 3600}")"
-  sleep "$sleep_time"
+  sleep_seconds="$(awk "BEGIN {print $hours * 3600}")"
+  sleep "$sleep_seconds"
 fi
 
 show_ascii
