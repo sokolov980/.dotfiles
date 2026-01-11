@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-
 set -uo pipefail
 
 # ===== CONFIG =====
-
 DND_ON_SCRIPT="$HOME/.deepwork/enable_dnd.sh"
 DND_OFF_SCRIPT="$HOME/.deepwork/disable_dnd.sh"
 ARTTIME="$(command -v arttime || true)"
@@ -17,12 +15,8 @@ ASCII_ART='
 |____/ \___|\___\___/|_| |_|\__\___|_| |_| |_|
 '
 
-# ===== STATE =====
-
 HOSTS_MODIFIED=false
 SOUND_PID=""
-
-# ===== CLEANUP =====
 
 cleanup() {
   echo -e "\n\n[✓] Unlocking..."
@@ -41,15 +35,11 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# ===== FUNCTIONS =====
-
 block_websites() {
   local raw_sites="$1"
-
   echo "[+] Blocking websites..."
 
   [[ ! -f "$HOSTS_BACKUP" ]] && sudo cp /etc/hosts "$HOSTS_BACKUP"
-
   echo "# Blocked by deepwork" | sudo tee -a /etc/hosts >/dev/null
 
   IFS=',' read -ra ADDR <<<"$raw_sites"
@@ -62,11 +52,8 @@ block_websites() {
 }
 
 # ===== PROMPTS =====
-
 read -rp "How long (hours, e.g. 1.5): " hours
 read -rp "Websites to block (comma-separated): " sites
-
-# ===== START SESSION =====
 
 echo
 echo "$ASCII_ART"
@@ -78,28 +65,38 @@ if read -t 10 -n 1; then
   exit 1
 fi
 
-# ----- SAFETY CHECK -----
-
 if [[ -z "$ARTTIME" ]]; then
   echo "[!] arttime is not installed or not in PATH."
   exit 1
 fi
 
-# ----- APPLY BLOCKS -----
-
 [[ -n "$sites" ]] && block_websites "$sites"
 [[ -x "$DND_ON_SCRIPT" ]] && "$DND_ON_SCRIPT"
 
-# ----- LAUNCH ARTTIME -----
+# ===== TIMER FORMATTING =====
 
-total_minutes="$(awk "BEGIN {print int($hours * 60)}")"
+# Get integer hours
+hours_int=${hours%.*}
+
+# Calculate the remaining minutes (rounded)
+minutes=$(awk "BEGIN { printf(\"%.0f\", ($hours - $hours_int) * 60) }")
+
+# If user input was fractional and hours_int is zero, handle properly
+if [[ "$hours_int" -eq 0 ]]; then
+  time_arg="${minutes}m"
+else
+  time_arg="${hours_int}h${minutes}m"
+fi
 
 echo
-echo "[✓] Focus locked — launching arttime"
-echo "[✓] Close arttime to unlock"
+echo "[✓] Focus locked — launching arttime with goal: $time_arg"
+echo "[!] _Close_ arttime or let the timer finish to unlock"
 
 # Prevent Ctrl+C from skipping cleanup
 trap '' INT
-arttime "${total_minutes}m"
 
-# cleanup runs automatically on exit
+# Start arttime with delta time goal
+# `-g` flag can be used for non-interactive goal if supported 
+# Else, goal will be read interactively inside arttime
+# Use `--nolearn` to skip first-time help screens
+"$ARTTIME" --nolearn -g "$time_arg"
