@@ -54,6 +54,7 @@ block_websites() {
   for s in $sites; do
     s="${s##*( )}"   # trim leading spaces
     s="${s%%*( )}"   # trim trailing spaces
+    [[ -z "$s" ]] && continue
     d=$(echo "$s" | sed -E 's~(https?://)?([^/]+).*~\2~')
     echo "127.0.0.1 $d" | sudo tee -a /etc/hosts >/dev/null
     echo "::1 $d" | sudo tee -a /etc/hosts >/dev/null
@@ -84,20 +85,18 @@ run_timer() {
   local label="$2"
 
   if [[ -n "$ARTTIME" ]]; then
-    # ArtTime runs timer, blocking until finished
     $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
   else
-    # fallback sleep for testing
     echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
     sleep "$((minutes*60))"
   fi
 
-  # Post-timer prompt
+  # Post-timer prompt for extend or quit
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
     case "$choice" in
       q)
-        echo "Ending deep work session early."
+        echo "Ending session early."
         exit 0
         ;;
       e)
@@ -117,41 +116,53 @@ run_timer() {
   done
 }
 
-# ===== POMODORO RUNNER (Auto-adjust rounds) =====
+# ===== POMODORO CYCLE =====
 run_pomodoro() {
   local total_minutes="$1"
   local work="$2"
-  local break_time="$3"
+  local short_break="$3"
+  local long_break="$4"
+  local rounds="$5"
 
-  local round_time=$((work + break_time))
-  local rounds=$((total_minutes / round_time))
-  local remainder=$((total_minutes % round_time))
+  local elapsed=0
+  local round_num=1
 
-  if (( rounds == 0 )); then
-    echo "[!] Session too short for Pomodoro with given work/break settings."
-    run_timer "$total_minutes" "focus"
-    return
-  fi
-
-  echo "[i] Running $rounds Pomodoro rounds with $work/$break_time min work/break."
-
-  for ((round=1; round<=rounds; round++)); do
+  while (( elapsed < total_minutes )); do
+    # Work period
+    local remaining=$(( total_minutes - elapsed ))
+    local work_time=$(( work <= remaining ? work : remaining ))
     echo ""
-    echo "Starting Pomodoro round $round of $rounds"
-    run_timer "$work" "focus ($round/$rounds)"
+    echo "Focus ($round_num/$rounds)"
+    run_timer "$work_time" "focus ($round_num/$rounds)"
+    elapsed=$(( elapsed + work_time ))
 
-    if (( round < rounds )); then
+    # Determine break
+    (( elapsed >= total_minutes )) && break
+    if (( round_num % rounds == 0 )); then
+      # Long break
+      local break_time=$(( long_break <= (total_minutes - elapsed) ? long_break : (total_minutes - elapsed) ))
       echo ""
-      echo "Break time"
-      run_timer "$break_time" "break ($round/$rounds)"
+      echo "Long break"
+      run_timer "$break_time" "long break"
+      elapsed=$(( elapsed + break_time ))
+    else
+      # Short break
+      local break_time=$(( short_break <= (total_minutes - elapsed) ? short_break : (total_minutes - elapsed) ))
+      echo ""
+      echo "Short break"
+      run_timer "$break_time" "short break"
+      elapsed=$(( elapsed + break_time ))
     fi
+
+    round_num=$((round_num + 1))
   done
 
-  # leftover minutes
-  if (( remainder > 0 )); then
+  # Extra focus if any leftover minutes
+  local leftover=$(( total_minutes - elapsed ))
+  if (( leftover > 0 )); then
     echo ""
-    echo "Extra focus time to complete session: $remainder minutes"
-    run_timer "$remainder" "focus (extra)"
+    echo "Extra focus to complete session: $leftover minutes"
+    run_timer "$leftover" "focus (extra)"
   fi
 }
 
@@ -162,22 +173,15 @@ read "music?Play soundtrack? (y/n): "
 read "sites?Websites to block (comma-separated): "
 read "pomodoro?Enable Pomodoro? (y/n): "
 
-if [[ "$pomodoro" == "y" ]]; then
-  read "work?Work minutes (e.g., 25): "
-  read "break?Break minutes (e.g., 5): "
-fi
-
 # ===== COUNTDOWN =====
 echo ""
 echo "press any key to cancel..."
-
 for i in {10..1}; do
   echo -n "$i... "
   read -t 1 -k 1 && exit 0
 done
 echo ""
 
-# ===== START SESSION =====
 [[ -n "$sites" ]] && block_websites "$sites"
 
 if [[ -x "$DND_ON" ]]; then
@@ -191,7 +195,27 @@ fi
 total_minutes=$(awk "BEGIN {print int($hours*60)}")
 
 if [[ "$pomodoro" == "y" ]]; then
-  run_pomodoro "$total_minutes" "$work" "$break"
+  # Pomodoro defaults
+  default_work=25
+  default_short_break=5
+  default_long_break=15
+  default_rounds=4
+
+  echo ""
+  read "custom?Use default Pomodoro settings? (y/n): "
+  if [[ "$custom" == "n" ]]; then
+    read "work?Work minutes (default $default_work): "
+    read "short_break?Short break minutes (default $default_short_break): "
+    read "long_break?Long break minutes (default $default_long_break): "
+    read "rounds?Rounds before long break (default $default_rounds): "
+  else
+    work=$default_work
+    short_break=$default_short_break
+    long_break=$default_long_break
+    rounds=$default_rounds
+  fi
+
+  run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
   run_timer "$total_minutes" "deep work"
 fi
