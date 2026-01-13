@@ -120,7 +120,7 @@ Rounds before long break (default 4): 1
 
 Expected behavior:
 
-**1.** **Countdown:** 10… 9… … 1
+**1.** **Countdown:** 10… 9… 8… 7… 6… 5… 4… 3… 2… 1…
 
 **2.** **DND** is enabled automatically after countdown.
 
