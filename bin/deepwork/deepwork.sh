@@ -10,6 +10,7 @@ HOSTS_BACKUP="/etc/hosts.backup.deepwork"
 
 HOSTS_MODIFIED=false
 SOUND_PID=""
+DND_ENABLED=false
 
 ASCII_DONE='
  ____                        _
@@ -31,7 +32,7 @@ cleanup() {
     echo "[✓] Websites unblocked"
   fi
 
-  [[ -x "$DND_OFF" ]] && "$DND_OFF"
+  [[ "$DND_ENABLED" == true && -x "$DND_OFF" ]] && "$DND_OFF"
   [[ -n "$SOUND_PID" ]] && kill "$SOUND_PID" 2>/dev/null || true
 
   echo "$ASCII_DONE"
@@ -104,12 +105,11 @@ run_timer() {
   # Post-timer prompt
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
-    # Add two blank lines before next timer
     echo ""
     echo ""
     case "$choice" in
       q) exit 0 ;;
-      e) 
+      e)
         minutes=$((minutes+5))
         run_timer "$minutes" "$label" "$use_zsh"
         ;;
@@ -174,16 +174,17 @@ for i in {10..1}; do
   echo -n "$i... "
   read -t 1 -k 1 && exit 0
 done
-echo "\n"  # extra line after countdown
+echo "\n"
 
 # ===== BLOCK WEBSITES =====
 [[ -n "$sites" ]] && block_websites "$sites"
 
-# ===== ENABLE DND =====
-if [[ -x "$DND_ON" ]]; then
+# ===== ENABLE DND (only once) =====
+if [[ "$DND_ENABLED" == false && -x "$DND_ON" ]]; then
     "$DND_ON"
     echo "[✓] DND enabled"
-else
+    DND_ENABLED=true
+elif [[ "$DND_ENABLED" == false ]]; then
     echo "[!] DND enable script missing or not executable"
 fi
 
@@ -214,7 +215,10 @@ if [[ "$pomodoro" == "y" ]]; then
 
   run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
-  # Use Zsh timer to avoid ArtTime infinite goal issue
-  run_timer "$total_minutes" "deepwork" true
+  # Use ArtTime if installed, else fallback to Zsh timer
+  if [[ -n "$ARTTIME" ]]; then
+    run_timer "$total_minutes" "Deep Work" false
+  else
+    run_timer "$total_minutes" "Deep Work" true
+  fi
 fi
-
