@@ -68,7 +68,7 @@ play_music() {
   SOUND_PID=$!
 }
 
-# ===== ZSH TIMER (Pomodoro) =====
+# ===== ZSH TIMER =====
 zsh_timer() {
   local minutes="$1"
   local label="$2"
@@ -97,13 +97,16 @@ run_timer() {
     sleep $((minutes*60))
   fi
 
-  # Add blank line after timer
+  # Two blank lines for spacing
+  echo ""
   echo ""
 
   # Post-timer prompt
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
-    echo ""  # extra line for spacing before next timer
+    # Add two blank lines before next timer
+    echo ""
+    echo ""
     case "$choice" in
       q) exit 0 ;;
       e) 
@@ -173,14 +176,23 @@ for i in {10..1}; do
 done
 echo "\n"  # extra line after countdown
 
+# ===== BLOCK WEBSITES =====
 [[ -n "$sites" ]] && block_websites "$sites"
 
-[[ -x "$DND_ON" ]] && "$DND_ON"
+# ===== ENABLE DND =====
+if [[ -x "$DND_ON" ]]; then
+    "$DND_ON"
+    echo "[✓] DND enabled"
+else
+    echo "[!] DND enable script missing or not executable"
+fi
 
+# ===== PLAY MUSIC =====
 [[ "$music" == "y" ]] && play_music "$music_file"
 
 total_minutes=$(awk "BEGIN {print int($hours*60)}")
 
+# ===== RUN POMODORO OR DEEPWORK =====
 if [[ "$pomodoro" == "y" ]]; then
   default_work=25
   default_short_break=5
@@ -202,6 +214,6 @@ if [[ "$pomodoro" == "y" ]]; then
 
   run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
-  run_timer "$total_minutes" "deepwork"
+  # Use Zsh timer to avoid ArtTime infinite goal issue
+  run_timer "$total_minutes" "deepwork" true
 fi
-
