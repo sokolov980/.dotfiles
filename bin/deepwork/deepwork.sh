@@ -15,7 +15,7 @@ ASCII_DONE='
  ____                        _
 |  _ \  ___  ___ ___  _ __ | |_ ___ _ __ ___
 | | |/ _ \/ __/ _ \| `_ \| __/ _ \ `_ ` _ \
-| |_| |  __/ (_| (_) | | | | ||  __/ | | | | |
+| |_| |  __/ (_| (_) | | | ||  __/ | | | | |
 |____/ \___|\___\___/|_| |_|\__\___|_| |_| |_|
 '
 
@@ -47,7 +47,9 @@ block_websites() {
 
   local sites=(${(s:,:)1})
   for s in $sites; do
-    d=$(echo "$s" | sed -E 's~(https?://)?([^/]+).*~\2~' | tr -d ' ')
+    s="${s##*( )}"   # trim leading spaces
+    s="${s%%*( )}"   # trim trailing spaces
+    d=$(echo "$s" | sed -E 's~(https?://)?([^/]+).*~\2~')
     echo "127.0.0.1 $d" | sudo tee -a /etc/hosts >/dev/null
     echo "::1 $d" | sudo tee -a /etc/hosts >/dev/null
   done
@@ -58,19 +60,31 @@ block_websites() {
 }
 
 play_music() {
-  [[ -x "$MPV" && -f "$1" ]] || return
+  if [[ ! -x "$MPV" ]]; then
+    echo "[!] mpv not found. Skipping music playback."
+    return
+  fi
+  if [[ ! -f "$1" ]]; then
+    echo "[!] Music file '$1' not found. Skipping music playback."
+    return
+  fi
+
   mpv --loop=inf --no-video "$1" >/dev/null 2>&1 &
   SOUND_PID=$!
 }
 
-# ===== TIMER WITH PAUSE / EXTEND / QUIT (Option 2) =====
+# ===== TIMER WITH PAUSE / EXTEND / QUIT =====
 run_timer() {
   local minutes="$1"
   local label="$2"
 
-  # only start after previous goal finished
   while true; do
-    arttime --nolearn -a butterfly -t "$label" -g "${minutes}m"
+    if [[ -n "$ARTTIME" ]]; then
+      $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
+    else
+      echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
+      sleep "$((minutes*60))"
+    fi
 
     echo ""
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
@@ -83,7 +97,6 @@ run_timer() {
       e)
         minutes=$((minutes + 5))
         echo "Extending by 5 minutes..."
-        # loop runs again with new extended minutes
         ;;
       *)
         break
@@ -92,22 +105,48 @@ run_timer() {
   done
 }
 
-# ===== POMODORO RUNNER =====
+# ===== POMODORO RUNNER (Auto-adjust rounds) =====
 run_pomodoro() {
+  local total_minutes="$1"
+  local work="$2"
+  local break_time="$3"
+
+  # Calculate maximum rounds that fit
+  local round_time=$((work + break_time))
+  local rounds=$((total_minutes / round_time))
+  local remainder=$((total_minutes % round_time))
+
+  if (( rounds == 0 )); then
+    echo "[!] Session too short for Pomodoro with given work/break settings."
+    echo "Running a single work period for $total_minutes minutes."
+    run_timer "$total_minutes" "focus"
+    return
+  fi
+
+  echo "[i] Running $rounds Pomodoro rounds with $work/$break_time min work/break."
+
   for ((round=1; round<=rounds; round++)); do
     echo ""
     echo "Starting Pomodoro round $round of $rounds"
     run_timer "$work" "focus ($round/$rounds)"
 
-    if [[ "$round" -lt "$rounds" ]]; then
+    # Only break if not the last round
+    if (( round < rounds )); then
       echo ""
       echo "Break time"
-      run_timer "$break" "break"
+      run_timer "$break_time" "break"
     fi
   done
+
+  # Handle leftover minutes (remainder)
+  if (( remainder > 0 )); then
+    echo ""
+    echo "Extra focus time to complete session: $remainder minutes"
+    run_timer "$remainder" "focus (extra)"
+  fi
 }
 
-# ===== PROMPTS (EXACT) =====
+# ===== PROMPTS =====
 read "hours?How long (hours, e.g. 1.5): "
 read "music?Play soundtrack? (y/n): "
 [[ "$music" == "y" ]] && read "music_file?Path to custom mp3 file: "
@@ -117,7 +156,6 @@ read "pomodoro?Enable Pomodoro? (y/n): "
 if [[ "$pomodoro" == "y" ]]; then
   read "work?Work minutes (e.g., 25): "
   read "break?Break minutes (e.g., 5): "
-  read "rounds?Number of Pomodoro rounds: "
 fi
 
 # ===== COUNTDOWN =====
@@ -135,9 +173,10 @@ echo ""
 [[ -x "$DND_ON" ]] && "$DND_ON"
 [[ "$music" == "y" ]] && play_music "$music_file"
 
+total_minutes=$(awk "BEGIN {print int($hours*60)}")
+
 if [[ "$pomodoro" == "y" ]]; then
-  run_pomodoro
+  run_pomodoro "$total_minutes" "$work" "$break"
 else
-  mins=$((hours * 60))
-  run_timer "$mins" "deep work"
+  run_timer "$total_minutes" "deep work"
 fi
