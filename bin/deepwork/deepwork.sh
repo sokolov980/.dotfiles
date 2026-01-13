@@ -14,7 +14,7 @@ SOUND_PID=""
 ASCII_DONE='
  ____                        _
 |  _ \  ___  ___ ___  _ __ | |_ ___ _ __ ___
-| | | |/ _ \/ __/ _ \| `_ \| __/ _ \ `_ ` _ \
+| | |/ _ \/ __/ _ \| `_ \| __/ _ \ `_ ` _ \
 | |_| |  __/ (_| (_) | | | | ||  __/ | | | | |
 |____/ \___|\___\___/|_| |_|\__\___|_| |_| |_|
 '
@@ -63,35 +63,51 @@ play_music() {
   SOUND_PID=$!
 }
 
-pause_prompt() {
+# ===== TIMER WITH PAUSE / EXTEND / QUIT (Option 2) =====
+run_timer() {
+  local minutes="$1"
+  local label="$2"
+
+  # only start after previous goal finished
   while true; do
-    read "?ENTER=continue | p=pause | e=+5min | q=quit > " c
-    case "$c" in
-      q) exit 0 ;;
-      p) echo "Paused. Press ENTER to resume."; read ;;
-      e) echo "extend" ; return 1 ;;
-      *) return 0 ;;
+    arttime --nolearn -a butterfly -t "$label" -g "${minutes}m"
+
+    echo ""
+    read "?ENTER = continue | e = extend +5 | q = quit > " choice
+
+    case "$choice" in
+      q)
+        echo "Ending deep work session early."
+        exit 0
+        ;;
+      e)
+        minutes=$((minutes + 5))
+        echo "Extending by 5 minutes..."
+        # loop runs again with new extended minutes
+        ;;
+      *)
+        break
+        ;;
     esac
   done
 }
 
-run_timer() {
-  local mins="$1" label="$2"
-  while true; do
-    arttime --nolearn -a butterfly -t "$label" -g "${mins}m"
-    pause_prompt && break
-    mins=$((mins + 5))
-  done
-}
-
+# ===== POMODORO RUNNER =====
 run_pomodoro() {
-  for ((i=1; i<=rounds; i++)); do
-    run_timer "$work" "focus ($i/$rounds)"
-    [[ "$i" -lt "$rounds" ]] && run_timer "$break" "break"
+  for ((round=1; round<=rounds; round++)); do
+    echo ""
+    echo "Starting Pomodoro round $round of $rounds"
+    run_timer "$work" "focus ($round/$rounds)"
+
+    if [[ "$round" -lt "$rounds" ]]; then
+      echo ""
+      echo "Break time"
+      run_timer "$break" "break"
+    fi
   done
 }
 
-# ===== PROMPTS (EXACT TEXT) =====
+# ===== PROMPTS (EXACT) =====
 read "hours?How long (hours, e.g. 1.5): "
 read "music?Play soundtrack? (y/n): "
 [[ "$music" == "y" ]] && read "music_file?Path to custom mp3 file: "
@@ -114,7 +130,7 @@ for i in {10..1}; do
 done
 echo ""
 
-# ===== START =====
+# ===== START SESSION =====
 [[ -n "$sites" ]] && block_websites "$sites"
 [[ -x "$DND_ON" ]] && "$DND_ON"
 [[ "$music" == "y" ]] && play_music "$music_file"
