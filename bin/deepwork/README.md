@@ -16,8 +16,6 @@ Follow the interactive prompts to configure your session.
 
 ## Features
 
-## Features
-
 - **Website blocking:** Temporarily block distracting sites by modifying `/etc/hosts`.
 
 - **Do Not Disturb (DND):** Enable system-wide DND mode during sessions using your assigned macOS shortcut.
