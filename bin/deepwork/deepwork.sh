@@ -202,5 +202,6 @@ if [[ "$pomodoro" == "y" ]]; then
 
   run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
-  run_timer "$total_minutes" "Deep Work"
+  run_timer "$total_minutes" "deepwork"
 fi
+
