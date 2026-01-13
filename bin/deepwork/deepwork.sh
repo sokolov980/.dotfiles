@@ -82,10 +82,22 @@ run_arttime_hours() {
 
 run_pomodoro() {
   local work="$1" break="$2" rounds="$3"
+
   for ((i=1; i<=rounds; i++)); do
     arttime --nolearn -a butterfly -t "focus ($i/$rounds)" -g "${work}m"
-    [[ "$i" -lt "$rounds" ]] && \
+
+    if [[ "$i" -lt "$rounds" ]]; then
+      echo ""
+      echo "Pomodoro round $i complete."
+      read "?Press ENTER to continue, or q to quit: " choice
+
+      if [[ "$choice" == "q" ]]; then
+        echo "Ending deep work session early."
+        exit 0   # cleanup trap fires
+      fi
+
       arttime --nolearn -a butterfly -t "break" -g "${break}m"
+    fi
   done
 }
 
