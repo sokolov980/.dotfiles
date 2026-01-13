@@ -31,7 +31,12 @@ cleanup() {
     echo "[✓] Websites unblocked"
   fi
 
-  [[ -x "$DND_OFF" ]] && "$DND_OFF"
+  if [[ -x "$DND_OFF" ]]; then
+    "$DND_OFF"
+  else
+    echo "[!] DND disable script missing, skipping"
+  fi
+
   [[ -n "$SOUND_PID" ]] && kill "$SOUND_PID" 2>/dev/null || true
 
   echo "$ASCII_DONE"
@@ -73,22 +78,23 @@ play_music() {
   SOUND_PID=$!
 }
 
-# ===== TIMER WITH PAUSE / EXTEND / QUIT =====
+# ===== TIMER WITH POST-TIMER INTERACTIVITY =====
 run_timer() {
   local minutes="$1"
   local label="$2"
 
+  if [[ -n "$ARTTIME" ]]; then
+    # ArtTime runs timer, blocking until finished
+    $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
+  else
+    # fallback sleep for testing
+    echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
+    sleep "$((minutes*60))"
+  fi
+
+  # Post-timer prompt
   while true; do
-    if [[ -n "$ARTTIME" ]]; then
-      $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
-    else
-      echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
-      sleep "$((minutes*60))"
-    fi
-
-    echo ""
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
-
     case "$choice" in
       q)
         echo "Ending deep work session early."
@@ -97,6 +103,12 @@ run_timer() {
       e)
         minutes=$((minutes + 5))
         echo "Extending by 5 minutes..."
+        if [[ -n "$ARTTIME" ]]; then
+          $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
+        else
+          echo "[i] Extended timer for $minutes minutes: $label"
+          sleep "$((minutes*60))"
+        fi
         ;;
       *)
         break
@@ -111,14 +123,12 @@ run_pomodoro() {
   local work="$2"
   local break_time="$3"
 
-  # Calculate maximum rounds that fit
   local round_time=$((work + break_time))
   local rounds=$((total_minutes / round_time))
   local remainder=$((total_minutes % round_time))
 
   if (( rounds == 0 )); then
     echo "[!] Session too short for Pomodoro with given work/break settings."
-    echo "Running a single work period for $total_minutes minutes."
     run_timer "$total_minutes" "focus"
     return
   fi
@@ -130,15 +140,14 @@ run_pomodoro() {
     echo "Starting Pomodoro round $round of $rounds"
     run_timer "$work" "focus ($round/$rounds)"
 
-    # Only break if not the last round
     if (( round < rounds )); then
       echo ""
       echo "Break time"
-      run_timer "$break_time" "break"
+      run_timer "$break_time" "break ($round/$rounds)"
     fi
   done
 
-  # Handle leftover minutes (remainder)
+  # leftover minutes
   if (( remainder > 0 )); then
     echo ""
     echo "Extra focus time to complete session: $remainder minutes"
@@ -170,7 +179,13 @@ echo ""
 
 # ===== START SESSION =====
 [[ -n "$sites" ]] && block_websites "$sites"
-[[ -x "$DND_ON" ]] && "$DND_ON"
+
+if [[ -x "$DND_ON" ]]; then
+  "$DND_ON"
+else
+  echo "[!] DND enable script missing, skipping"
+fi
+
 [[ "$music" == "y" ]] && play_music "$music_file"
 
 total_minutes=$(awk "BEGIN {print int($hours*60)}")
