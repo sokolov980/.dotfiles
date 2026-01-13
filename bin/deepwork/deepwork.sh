@@ -4,8 +4,8 @@ set -uo pipefail
 # ===== CONFIG =====
 ARTTIME="$(command -v arttime || true)"
 MPV="$(command -v mpv || true)"
-DND_ON="$HOME/deepwork/enable_dnd.sh"
-DND_OFF="$HOME/deepwork/disable_dnd.sh"
+DND_ON="$HOME/.deepwork/enable_dnd.sh"
+DND_OFF="$HOME/.deepwork/disable_dnd.sh"
 HOSTS_BACKUP="/etc/hosts.backup.deepwork"
 
 HOSTS_MODIFIED=false
@@ -217,3 +217,4 @@ else
   # Use Zsh timer to avoid ArtTime infinite goal issue
   run_timer "$total_minutes" "deepwork" true
 fi
+
