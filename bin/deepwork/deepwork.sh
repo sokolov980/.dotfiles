@@ -79,19 +79,36 @@ play_music() {
   SOUND_PID=$!
 }
 
+# ===== ZSH TIMER (for interactive Pomodoro) =====
+zsh_timer() {
+  local minutes="$1"
+  local label="$2"
+  local total_seconds=$((minutes*60))
+
+  for ((i=total_seconds; i>0; i--)); do
+    printf "\r%s | remaining %02d:%02d " "$label" $((i/60)) $((i%60))
+    sleep 1
+  done
+  echo ""
+}
+
 # ===== TIMER WITH POST-TIMER INTERACTIVITY =====
 run_timer() {
   local minutes="$1"
   local label="$2"
+  local use_zsh="${3:-false}"  # if true, use zsh_timer
 
-  if [[ -n "$ARTTIME" ]]; then
+  if [[ "$use_zsh" == true ]]; then
+    zsh_timer "$minutes" "$label"
+  elif [[ -n "$ARTTIME" ]]; then
     $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
+    stty sane  # restore terminal
   else
     echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
     sleep "$((minutes*60))"
   fi
 
-  # Post-timer prompt for extend or quit
+  # Post-timer prompt for extend/quit
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
     case "$choice" in
@@ -102,12 +119,7 @@ run_timer() {
       e)
         minutes=$((minutes + 5))
         echo "Extending by 5 minutes..."
-        if [[ -n "$ARTTIME" ]]; then
-          $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
-        else
-          echo "[i] Extended timer for $minutes minutes: $label"
-          sleep "$((minutes*60))"
-        fi
+        run_timer "$minutes" "$label" "$use_zsh"
         ;;
       *)
         break
@@ -133,7 +145,7 @@ run_pomodoro() {
     local work_time=$(( work <= remaining ? work : remaining ))
     echo ""
     echo "Focus ($round_num/$rounds)"
-    run_timer "$work_time" "focus ($round_num/$rounds)"
+    run_timer "$work_time" "focus ($round_num/$rounds)" true
     elapsed=$(( elapsed + work_time ))
 
     # Determine break
@@ -143,26 +155,26 @@ run_pomodoro() {
       local break_time=$(( long_break <= (total_minutes - elapsed) ? long_break : (total_minutes - elapsed) ))
       echo ""
       echo "Long break"
-      run_timer "$break_time" "long break"
+      run_timer "$break_time" "long break" true
       elapsed=$(( elapsed + break_time ))
     else
       # Short break
       local break_time=$(( short_break <= (total_minutes - elapsed) ? short_break : (total_minutes - elapsed) ))
       echo ""
       echo "Short break"
-      run_timer "$break_time" "short break"
+      run_timer "$break_time" "short break" true
       elapsed=$(( elapsed + break_time ))
     fi
 
     round_num=$((round_num + 1))
   done
 
-  # Extra focus if any leftover minutes
+  # Extra focus if leftover minutes
   local leftover=$(( total_minutes - elapsed ))
   if (( leftover > 0 )); then
     echo ""
     echo "Extra focus to complete session: $leftover minutes"
-    run_timer "$leftover" "focus (extra)"
+    run_timer "$leftover" "focus (extra)" true
   fi
 }
 
@@ -217,5 +229,6 @@ if [[ "$pomodoro" == "y" ]]; then
 
   run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
+  # Single deep work session uses ArtTime
   run_timer "$total_minutes" "deep work"
 fi
