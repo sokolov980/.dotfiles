@@ -182,10 +182,7 @@ echo "\n"
 # ===== ENABLE DND (only once) =====
 if [[ "$DND_ENABLED" == false && -x "$DND_ON" ]]; then
     "$DND_ON"
-    echo "[✓] DND enabled"
     DND_ENABLED=true
-elif [[ "$DND_ENABLED" == false ]]; then
-    echo "[!] DND enable script missing or not executable"
 fi
 
 # ===== PLAY MUSIC =====
@@ -217,8 +214,8 @@ if [[ "$pomodoro" == "y" ]]; then
 else
   # Use ArtTime if installed, else fallback to Zsh timer
   if [[ -n "$ARTTIME" ]]; then
-    run_timer "$total_minutes" "Deep Work" false
+    run_timer "$total_minutes" "deepwork" false
   else
-    run_timer "$total_minutes" "Deep Work" true
+    run_timer "$total_minutes" "deepwork" true
   fi
 fi
