@@ -1,6 +1,11 @@
 #!/usr/bin/env zsh
-# Enable Do Not Disturb
+# Enable macOS Do Not Disturb
+
+# Set DND to true
 defaults -currentHost write ~/Library/Preferences/ByHost/com.apple.notificationcenterui doNotDisturb -boolean true
-defaults -currentHost write ~/Library/Preferences/ByHost/com.apple.notificationcenterui doNotDisturbDate -date "$(date)"
-killall NotificationCenter
-echo "[✓] DND enabled"
+
+# Optionally set a future timestamp (disable auto-off)
+defaults -currentHost write ~/Library/Preferences/ByHost/com.apple.notificationcenterui doNotDisturbDate -date "$(date +%s)"
+
+# Restart NotificationCenter to apply changes
+killall NotificationCenter 2>/dev/null
