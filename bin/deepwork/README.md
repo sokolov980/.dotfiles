@@ -118,7 +118,7 @@ Long break minutes (default 15): 1
 Rounds before long break (default 4): 1
 ```
 
-### Expected Behavior (Quick Test Session)
+Expected behavior:
 
 **1.** **Countdown:** 10… 9… … 1
 
