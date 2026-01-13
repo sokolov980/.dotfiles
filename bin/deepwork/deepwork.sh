@@ -97,9 +97,13 @@ run_timer() {
     sleep $((minutes*60))
   fi
 
+  # Add blank line after timer
+  echo ""
+
   # Post-timer prompt
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
+    echo ""  # extra line for spacing before next timer
     case "$choice" in
       q) exit 0 ;;
       e) 
@@ -167,7 +171,7 @@ for i in {10..1}; do
   echo -n "$i... "
   read -t 1 -k 1 && exit 0
 done
-echo "\n"  # extra line before first timer
+echo "\n"  # extra line after countdown
 
 [[ -n "$sites" ]] && block_websites "$sites"
 
