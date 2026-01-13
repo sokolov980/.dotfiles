@@ -4,8 +4,8 @@ set -uo pipefail
 # ===== CONFIG =====
 ARTTIME="$(command -v arttime || true)"
 MPV="$(command -v mpv || true)"
-DND_ON="$HOME/.deepwork/enable_dnd.sh"
-DND_OFF="$HOME/.deepwork/disable_dnd.sh"
+DND_ON="$HOME/deepwork/enable_dnd.sh"
+DND_OFF="$HOME/deepwork/disable_dnd.sh"
 HOSTS_BACKUP="/etc/hosts.backup.deepwork"
 
 HOSTS_MODIFIED=false
@@ -31,12 +31,7 @@ cleanup() {
     echo "[✓] Websites unblocked"
   fi
 
-  if [[ -x "$DND_OFF" ]]; then
-    "$DND_OFF"
-  else
-    echo "[!] DND disable script missing, skipping"
-  fi
-
+  [[ -x "$DND_OFF" ]] && "$DND_OFF"
   [[ -n "$SOUND_PID" ]] && kill "$SOUND_PID" 2>/dev/null || true
 
   echo "$ASCII_DONE"
@@ -52,8 +47,8 @@ block_websites() {
 
   local sites=(${(s:,:)1})
   for s in $sites; do
-    s="${s##*( )}"   # trim leading spaces
-    s="${s%%*( )}"   # trim trailing spaces
+    s="${s##*( )}"
+    s="${s%%*( )}"
     [[ -z "$s" ]] && continue
     d=$(echo "$s" | sed -E 's~(https?://)?([^/]+).*~\2~')
     echo "127.0.0.1 $d" | sudo tee -a /etc/hosts >/dev/null
@@ -66,69 +61,57 @@ block_websites() {
 }
 
 play_music() {
-  if [[ ! -x "$MPV" ]]; then
-    echo "[!] mpv not found. Skipping music playback."
+  if [[ ! -x "$MPV" || ! -f "$1" ]]; then
     return
   fi
-  if [[ ! -f "$1" ]]; then
-    echo "[!] Music file '$1' not found. Skipping music playback."
-    return
-  fi
-
   mpv --loop=inf --no-video "$1" >/dev/null 2>&1 &
   SOUND_PID=$!
 }
 
-# ===== ZSH TIMER (for interactive Pomodoro) =====
+# ===== ZSH TIMER (Pomodoro) =====
 zsh_timer() {
   local minutes="$1"
   local label="$2"
   local total_seconds=$((minutes*60))
 
   for ((i=total_seconds; i>0; i--)); do
-    printf "\r%s | remaining %02d:%02d " "$label" $((i/60)) $((i%60))
+    printf "\r%s | time remaining %02d:%02d " "$label" $((i/60)) $((i%60))
     sleep 1
   done
-  echo ""
+  echo ""  # newline after timer
 }
 
 # ===== TIMER WITH POST-TIMER INTERACTIVITY =====
 run_timer() {
   local minutes="$1"
   local label="$2"
-  local use_zsh="${3:-false}"  # if true, use zsh_timer
+  local use_zsh="${3:-false}"
 
   if [[ "$use_zsh" == true ]]; then
     zsh_timer "$minutes" "$label"
   elif [[ -n "$ARTTIME" ]]; then
     $ARTTIME --nolearn -a butterfly -t "$label" -g "${minutes}m"
-    stty sane  # restore terminal
+    stty sane
   else
-    echo "[i] Timer for $minutes minutes: $label (arttime not installed)"
-    sleep "$((minutes*60))"
+    echo "[i] Timer for $minutes minutes: $label"
+    sleep $((minutes*60))
   fi
 
-  # Post-timer prompt for extend/quit
+  # Post-timer prompt
   while true; do
     read "?ENTER = continue | e = extend +5 | q = quit > " choice
     case "$choice" in
-      q)
-        echo "Ending session early."
-        exit 0
-        ;;
-      e)
-        minutes=$((minutes + 5))
-        echo "Extending by 5 minutes..."
+      q) exit 0 ;;
+      e) 
+        minutes=$((minutes+5))
         run_timer "$minutes" "$label" "$use_zsh"
         ;;
-      *)
-        break
-        ;;
+      *) break ;;
     esac
   done
 }
 
-# ===== POMODORO CYCLE =====
+# ===== POMODORO =====
 run_pomodoro() {
   local total_minutes="$1"
   local work="$2"
@@ -137,48 +120,40 @@ run_pomodoro() {
   local rounds="$5"
 
   local elapsed=0
-  local round_num=1
+  local cycle=1
 
   while (( elapsed < total_minutes )); do
     # Work period
     local remaining=$(( total_minutes - elapsed ))
     local work_time=$(( work <= remaining ? work : remaining ))
-    echo ""
-    echo "Focus ($round_num/$rounds)"
-    run_timer "$work_time" "focus ($round_num/$rounds)" true
+    [[ work_time -le 0 ]] && break
+    run_timer "$work_time" "Focus ($cycle)" true
     elapsed=$(( elapsed + work_time ))
 
-    # Determine break
-    (( elapsed >= total_minutes )) && break
-    if (( round_num % rounds == 0 )); then
-      # Long break
-      local break_time=$(( long_break <= (total_minutes - elapsed) ? long_break : (total_minutes - elapsed) ))
-      echo ""
-      echo "Long break"
-      run_timer "$break_time" "long break" true
+    # Break
+    remaining=$(( total_minutes - elapsed ))
+    [[ remaining -le 0 ]] && break
+    if (( cycle % rounds == 0 )); then
+      local break_time=$(( long_break <= remaining ? long_break : remaining ))
+      run_timer "$break_time" "Long Break ($cycle/$rounds)" true
       elapsed=$(( elapsed + break_time ))
     else
-      # Short break
-      local break_time=$(( short_break <= (total_minutes - elapsed) ? short_break : (total_minutes - elapsed) ))
-      echo ""
-      echo "Short break"
-      run_timer "$break_time" "short break" true
+      local break_time=$(( short_break <= remaining ? short_break : remaining ))
+      run_timer "$break_time" "Short Break ($cycle/$rounds)" true
       elapsed=$(( elapsed + break_time ))
     fi
 
-    round_num=$((round_num + 1))
+    cycle=$((cycle+1))
   done
 
-  # Extra focus if leftover minutes
+  # Extra focus if leftover
   local leftover=$(( total_minutes - elapsed ))
   if (( leftover > 0 )); then
-    echo ""
-    echo "Extra focus to complete session: $leftover minutes"
-    run_timer "$leftover" "focus (extra)" true
+    run_timer "$leftover" "Extra Focus" true
   fi
 }
 
-# ===== PROMPTS =====
+# ===== USER PROMPTS =====
 read "hours?How long (hours, e.g. 1.5): "
 read "music?Play soundtrack? (y/n): "
 [[ "$music" == "y" ]] && read "music_file?Path to custom mp3 file: "
@@ -187,33 +162,27 @@ read "pomodoro?Enable Pomodoro? (y/n): "
 
 # ===== COUNTDOWN =====
 echo ""
-echo "press any key to cancel..."
+echo "Press any key to cancel..."
 for i in {10..1}; do
   echo -n "$i... "
   read -t 1 -k 1 && exit 0
 done
-echo ""
+echo "\n"  # extra line before first timer
 
 [[ -n "$sites" ]] && block_websites "$sites"
 
-if [[ -x "$DND_ON" ]]; then
-  "$DND_ON"
-else
-  echo "[!] DND enable script missing, skipping"
-fi
+[[ -x "$DND_ON" ]] && "$DND_ON"
 
 [[ "$music" == "y" ]] && play_music "$music_file"
 
 total_minutes=$(awk "BEGIN {print int($hours*60)}")
 
 if [[ "$pomodoro" == "y" ]]; then
-  # Pomodoro defaults
   default_work=25
   default_short_break=5
   default_long_break=15
   default_rounds=4
 
-  echo ""
   read "custom?Use default Pomodoro settings? (y/n): "
   if [[ "$custom" == "n" ]]; then
     read "work?Work minutes (default $default_work): "
@@ -229,6 +198,5 @@ if [[ "$pomodoro" == "y" ]]; then
 
   run_pomodoro "$total_minutes" "$work" "$short_break" "$long_break" "$rounds"
 else
-  # Single deep work session uses ArtTime
-  run_timer "$total_minutes" "deep work"
+  run_timer "$total_minutes" "Deep Work"
 fi
