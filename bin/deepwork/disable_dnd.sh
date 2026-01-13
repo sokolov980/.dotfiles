@@ -1,7 +1,8 @@
 #!/usr/bin/env zsh
-# Disable Do Not Disturb using assigned keyboard shortcut
+# Disable DND using ⌃⌥⌘ D
+
 osascript <<EOF
 tell application "System Events"
-    keystroke space using {command down, control down, option down}
+    keystroke "d" using {control down, option down, command down}
 end tell
 EOF
